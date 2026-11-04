@@ -1,0 +1,11 @@
+# Настройка веб-сервера Caddy (/etc/caddy/Caddyfile). Сертификаты Let's Encrypt выпускаются и продлеваются автоматически.
+# Основной адрес платформы:
+sovetpervih19.ru {
+	encode gzip
+	reverse_proxy 127.0.0.1:18765
+}
+
+# Остальные адреса ведут на основной с сохранением пути (советпервых19.рф записан в punycode).
+www.sovetpervih19.ru, xn--19-dlcaoa4dkkeo4b3e.xn--p1ai, www.xn--19-dlcaoa4dkkeo4b3e.xn--p1ai, academic-sweet-trail.ihchost.rocks {
+	redir https://sovetpervih19.ru{uri} permanent
+}
