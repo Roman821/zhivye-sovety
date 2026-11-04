@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-const source=['app.js','plan.js','efficiency.js'].map(f=>readFileSync(new URL('../public/'+f,import.meta.url),'utf8')).join('\n');
+const source=['app.js','plan.js','efficiency.js','sovetnik.js'].map(f=>readFileSync(new URL('../public/'+f,import.meta.url),'utf8')).join('\n');
 function app(){const nodes={};const context=vm.createContext({console,setTimeout,clearTimeout,URL,Intl,Date,fetch:()=>new Promise(()=>{}),window:{scrollTo(){}},document:{querySelector:s=>nodes[s]||(nodes[s]={innerHTML:'',textContent:'',classList:{add(){},remove(){}},showModal(){},close(){}}),addEventListener(){}}});vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),nodes};}
 test('Поиск и сочетание фильтров работают независимо от вида списка',()=>{const a=app();a.run('state.items=demoItems;state.demo=true');assert.equal(a.run('filtered().length'),6);a.run("state.query='наставничества'");assert.equal(a.run('filtered()[0].title'),'Совет — Совету');a.run("state.query='';state.council='Ширинский район';state.status='progress'");assert.equal(a.run('filtered().length'),2);a.run("state.page='initiative'");assert.equal(a.run('filtered().length'),1);a.run("state.view='list';render()");assert.ok(a.nodes['#app'].innerHTML.includes('class="rows"'));});
 test('Просроченные записи не включают завершённые и архивные',()=>{const a=app();a.run("state.items=[{deadline:'2000-01-01',status:'progress',updated:'1'},{deadline:'2000-01-01',status:'done',updated:'1'},{deadline:'2000-01-01',status:'archive',updated:'1'}];state.status='overdue'");assert.equal(a.run('filtered().length'),1);});
@@ -29,3 +29,9 @@ test('Общая эффективность считает баллы, срок�
  a.run("efPeriod='';efLevel='primary'");assert.equal(a.run('efRows().map(r=>r.person.name).join()'),'Борис');
  a.run("efLevel=''");const totals=a.run('efCouncilTotals(efRows())');assert.equal(totals.length,2);assert.equal(totals.find(t=>t.council==='Шира').attendance,50);
  a.run("state.page='efficiency'");const html=a.run('efficiencyPage()');assert.ok(html.includes('Рейтинг участников'));assert.ok(html.includes('Итоги по Советам'));});
+test('Советник оформляет ссылки в любом виде и не пропускает HTML',()=>{const a=app();
+ const answer='4 ноября, 18:00 — ВКС "Разработка плана на год" [/#item=048a07be-8012-4335-a7b2-31654e88e935]\n- [Календарь](/#page=calendar)\n- см. /#item=abc-1 и (/#page=reports)\n**важно** <img src=x onerror=alert(1)> [x](javascript:alert(1))';
+ const html=a.run('svFormat('+JSON.stringify(answer)+')');
+ assert.ok(html.includes('<a href="/#item=048a07be-8012-4335-a7b2-31654e88e935" data-sv-link>Открыть</a>'));assert.ok(!html.includes('[/#item'));
+ assert.ok(html.includes('<a href="/#page=calendar" data-sv-link>Календарь</a>'));assert.ok(html.includes('<a href="/#item=abc-1" data-sv-link>Открыть</a>'));assert.ok(html.includes('<a href="/#page=reports" data-sv-link>Открыть раздел</a>'));
+ assert.ok(html.includes('<strong>важно</strong>'));assert.ok(!html.includes('<img'));assert.ok(!html.includes('href="javascript'));assert.equal((html.match(/<a /g)||[]).length,4);});
