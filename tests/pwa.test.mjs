@@ -41,6 +41,7 @@ test('Веб-приложение: манифест, Service Worker, уведо�
  await req('/items/'+item.id+'/subtasks','POST',{title:'Найти площадку',deadline:'2026-11-20',assignee_ids:[person]},owner);
  await req('/report-requests','POST',{title:'Годовой отчёт',year:2026,deadline:'2026-12-20',councils:['Ширинский район']},owner);
  const list=(await req('/notifications','GET',undefined,anna)).data;assert.equal(list.unread,3);assert.deepEqual(list.notifications.map(n=>n.title).sort(),['Вам назначена задача','Вам назначена подзадача','Запрошен отчёт'].sort());
+ assert.equal((await req('/push/test','POST',{},anna)).status,200);assert.equal((await req('/notifications','GET',undefined,anna)).data.notifications[0].title,'Уведомления включены');
  assert.equal((await req('/notifications/read','POST',{},anna)).status,200);assert.equal((await req('/notifications','GET',undefined,anna)).data.unread,0);
  // Исчезнувшая подписка (410) удаляется.
  await req('/push/subscribe','POST',{endpoint:pushOrigin+'/gone'},anna);await req('/items/'+item.id+'/subtasks','POST',{title:'Ещё шаг',assignee_ids:[person]},owner);

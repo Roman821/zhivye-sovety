@@ -13,7 +13,7 @@ async function pwaTogglePush(){
  if(pwaPush){await api('/push/unsubscribe','POST',{endpoint:pwaPush.endpoint});await pwaPush.unsubscribe();pwaPush=null;render();toast('Уведомления выключены на этом устройстве.');return;}
  const permission=await Notification.requestPermission();if(permission!=='granted'){toast(permission==='denied'?'Уведомления запрещены в настройках браузера. Разрешите их для этого сайта и попробуйте снова.':'Уведомления не включены.');return;}
  const reg=await navigator.serviceWorker.ready,{key}=await api('/push/key');
- pwaPush=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pwaBase64(key)});await api('/push/subscribe','POST',{endpoint:pwaPush.endpoint});render();toast('Уведомления включены: о назначенных задачах, заседаниях, отчётах и сроках на завтра.');
+ pwaPush=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:pwaBase64(key)});await api('/push/subscribe','POST',{endpoint:pwaPush.endpoint});await api('/push/test','POST',{});await pwaLoadNotifications();render();toast('Уведомления включены, проверочное уже в пути: о назначенных задачах, заседаниях, отчётах и сроках на завтра.');
 }
 async function pwaInstall(){
  if(pwaInstallEvent){pwaInstallEvent.prompt();const choice=await pwaInstallEvent.userChoice;pwaInstallEvent=null;render();if(choice.outcome==='accepted')toast('Приложение установлено.');return;}
