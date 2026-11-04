@@ -4,6 +4,8 @@ import {generateKeyPairSync,createPrivateKey,sign} from 'node:crypto';
 // поэтому через службы Google/Apple/Mozilla не проходят данные Советов, а шифрование не нужно.
 export function notifyFeatures(h){
  const {db,randomUUID,now,fail,str,json,body}=h;
+ // Уведомления пока отключены по решению координатора (4 ноября 2026). Включить: SOVETY_NOTIFICATIONS=on в /etc/sovety.env.
+ const enabled=process.env.SOVETY_NOTIFICATIONS==='on';
  db.exec(`CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS push_subscriptions(endpoint TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created TEXT NOT NULL,last_seen TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS notifications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,body TEXT NOT NULL,url TEXT NOT NULL DEFAULT '/',dedupe TEXT NOT NULL,created TEXT NOT NULL,read INTEGER NOT NULL DEFAULT 0,UNIQUE(user_id,dedupe));`);
@@ -19,6 +21,7 @@ export function notifyFeatures(h){
  async function pushTo(endpoint){try{const r=await fetch(endpoint,{method:'POST',headers:{TTL:'86400',Urgency:'normal',Authorization:`vapid t=${vapidJwt(new URL(endpoint).origin)}, k=${publicKey}`},body:new Uint8Array(0),signal:AbortSignal.timeout(10000)});if([404,410].includes(r.status))db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(endpoint);else if(!r.ok)console.error('Push не доставлен:',r.status,new URL(endpoint).hostname);}catch(e){console.error('Push не отправлен:',e.message);}}
  // userIds — аккаунты получателей; dedupe защищает от повторов одного и того же уведомления.
  function notify(userIds,{title,body:text,url='/',dedupe},actor){
+  if(!enabled)return 0;
   const ids=[...new Set(userIds)].filter(id=>id&&id!==actor?.id&&db.prepare('SELECT id FROM users WHERE id=? AND active=1').get(id));const fresh=[];
   for(const id of ids){const r=db.prepare('INSERT OR IGNORE INTO notifications(id,user_id,title,body,url,dedupe,created) VALUES(?,?,?,?,?,?,?)').run(randomUUID(),id,title.slice(0,120),text.slice(0,300),url,dedupe||randomUUID(),now());if(r.changes)fresh.push(id);}
   for(const id of fresh)for(const s of db.prepare('SELECT endpoint FROM push_subscriptions WHERE user_id=?').all(id))pushTo(s.endpoint);
@@ -49,10 +52,12 @@ export function notifyFeatures(h){
   for(const r of db.prepare("SELECT c.id,c.council,q.title,q.deadline,q.id AS request_id FROM council_reports c JOIN report_requests q ON q.id=c.request_id WHERE q.deadline=? AND c.status<>'submitted' AND c.deleted_at=''").all(tomorrow))sent+=notify(usersOfCouncils([r.council]),{title:'Завтра срок отчёта',body:r.title+' · '+r.council,url:'/#page=reports',dedupe:'due-report:'+r.id+':'+tomorrow});
   return sent;
  }
- const timer=setInterval(()=>{try{reminders();}catch(e){console.error(e);}},30*60000);timer.unref();setTimeout(()=>{try{reminders();}catch(e){console.error(e);}},15000).unref();
+ if(!enabled)db.exec('DELETE FROM push_subscriptions');
+ if(enabled){const timer=setInterval(()=>{try{reminders();}catch(e){console.error(e);}},30*60000);timer.unref();setTimeout(()=>{try{reminders();}catch(e){console.error(e);}},15000).unref();}
  const view=n=>({...n,read:!!n.read});
  const handler=async(req,res,p,u)=>{
   if(!p.startsWith('/api/push/')&&!p.startsWith('/api/notifications'))return false;
+  if(!enabled)fail('Уведомления отключены.',404);
   if(p==='/api/push/key'&&req.method==='GET'){json(res,{key:publicKey});return true;}
   if(p==='/api/push/subscribe'&&req.method==='POST'){const b=await body(req),endpoint=str(b.endpoint,1000);if(!allowedEndpoint(endpoint))fail('Этот браузер использует неизвестную службу уведомлений.');if(db.prepare('SELECT count(*) AS n FROM push_subscriptions WHERE user_id=?').get(u.id).n>=10)db.prepare('DELETE FROM push_subscriptions WHERE endpoint=(SELECT endpoint FROM push_subscriptions WHERE user_id=? ORDER BY last_seen LIMIT 1)').run(u.id);db.prepare('INSERT INTO push_subscriptions VALUES(?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,last_seen=excluded.last_seen').run(endpoint,u.id,now(),now());json(res,{ok:true});return true;}
   if(p==='/api/push/test'&&req.method==='POST'){notify([u.id],{title:'Уведомления включены',body:'Так будут приходить новости о ваших задачах, заседаниях и отчётах.',url:'/',dedupe:'test:'+Date.now()});json(res,{ok:true});return true;}
@@ -63,6 +68,6 @@ export function notifyFeatures(h){
   if(p==='/api/notifications/pending'&&req.method==='POST'){const b=await body(req),sub=db.prepare('SELECT * FROM push_subscriptions WHERE endpoint=? AND user_id=?').get(str(b.endpoint,1000),u.id),since=sub?.last_seen||new Date(Date.now()-3600000).toISOString();const list=db.prepare('SELECT * FROM notifications WHERE user_id=? AND created>? AND read=0 ORDER BY created DESC LIMIT 5').all(u.id,since).map(view);if(sub)db.prepare('UPDATE push_subscriptions SET last_seen=? WHERE endpoint=?').run(now(),sub.endpoint);json(res,{notifications:list});return true;}
   fail('Такого действия нет.',404);
  };
- Object.assign(handler,{notify,itemSaved,subtaskSaved,reportRequested,reminders,publicKey,backup:()=>({notifications:db.prepare('SELECT * FROM notifications').all()})});
+ Object.assign(handler,{enabled,notify,itemSaved,subtaskSaved,reportRequested,reminders,publicKey,backup:()=>({notifications:db.prepare('SELECT * FROM notifications').all()})});
  return handler;
 }

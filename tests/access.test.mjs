@@ -7,6 +7,8 @@ test('Доступ по уровням Советов, район куратор
  const url=await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(new Error(out)),8000);child.stdout.on('data',c=>{out+=c;const m=out.match(/http:\/\/127.0.0.1:\d+/);if(m){clearTimeout(t);resolve(m[0]);}});child.stderr.on('data',c=>out+=c);child.once('exit',()=>{clearTimeout(t);reject(new Error(out));});});
  async function req(p,method='GET',value,cookie){const r=await fetch(url+'/api'+p,{method,headers:{...(value?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})},body:value?JSON.stringify(value):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
  const password='test-strong-123',owner=(await req('/setup','POST',{name:'Координатор',email:'owner@example.test',password,council:'Региональный Совет'})).cookie;
+ // Уведомления по умолчанию выключены: ни колокольчика, ни push.
+ assert.equal((await req('/bootstrap','GET',undefined,owner)).data.notifications,false);assert.equal((await req('/notifications','GET',undefined,owner)).status,404);
  const dir=(name,level,parent='')=>req('/council-directory','POST',{name,level,parent},owner);
  for(const [n,l,p] of [['Региональный Совет','regional'],['Ширинский район','local'],['Абаканский район','local'],['Школа №1 Шира','primary','Ширинский район'],['Школа №5 Абакан','primary','Абаканский район']])assert.equal((await dir(n,l,p)).status,200);
  async function member(name,roles,council,n){const inv=await req('/invites','POST',{name,roles,council},owner);assert.equal(inv.status,201);const reg=await req('/register','POST',{name,email:`u${n}@example.test`,password,code:inv.data.code});assert.equal(reg.status,201);return reg;}
