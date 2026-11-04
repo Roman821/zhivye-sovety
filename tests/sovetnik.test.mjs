@@ -29,7 +29,7 @@ test('Советник: GigaChat, функции в пределах прав, �
  assert.match(r1.data.answer,/Просроченная задача: Ширинский район/);assert.doesNotMatch(r1.data.answer,/Абаканский/);assert.equal(r1.data.used,1);
  assert.equal(oauth.length,1);assert.equal(oauth[0].auth,'Basic test-key');assert.match(oauth[0].rquid,/^[0-9a-f-]{36}$/);assert.equal(oauth[0].body,'scope=GIGACHAT_API_PERS');
  const first=calls[0].body;assert.equal(calls[0].auth,'Bearer tok-1');assert.equal(first.model,'GigaChat-2');assert.equal(first.function_call,'auto');assert.ok(first.functions.some(f=>f.name==='calendar'));
- assert.match(first.messages[0].content,/Советник/);assert.match(first.messages[0].content,/Как сделать/);assert.match(first.messages[0].content,/Петрова Анна/);
+ assert.match(first.messages[0].content,/Советник/);assert.match(first.messages[0].content,/Как сделать/);assert.match(first.messages[0].content,/Петрова Анна/);assert.match(first.messages[0].content,/Эта неделя: с \d{4}-\d{2}-\d{2} по \d{4}-\d{2}-\d{2}/);assert.match(first.messages[0].content,/должности: Председатель/);assert.match(r1.data.answer,/ссылка_для_ответа/);
  const second=calls[1].body.messages;assert.equal(second.at(-2).functions_state_id,'state-1');assert.equal(second.at(-1).role,'function');assert.equal(second.at(-1).name,'find_records');
  // Сведения об участниках: только ФИО, должности, Совет — без телефона, соцсетей и года рождения.
  const r2=await req('/sovetnik','POST',{messages:[{role:'user',content:'Кто в составе?'}]},anna);assert.match(r2.data.answer,/Петрова Анна/);
