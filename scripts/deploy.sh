@@ -11,7 +11,7 @@ echo "== Тесты"
 echo "== Упаковка"
 TS=$(date +%Y%m%d-%H%M%S)
 ARCHIVE=$(mktemp -d)/sovety-app-$TS.tar.gz
-tar -czf "$ARCHIVE" server.mjs council-features.mjs people-features.mjs registration-features.mjs plan-features.mjs package.json public
+tar -czf "$ARCHIVE" server.mjs council-features.mjs people-features.mjs registration-features.mjs plan-features.mjs materials-features.mjs package.json public
 scp -q "$ARCHIVE" sovety:/tmp/sovety-app.tar.gz
 
 echo "== Установка на сервере"

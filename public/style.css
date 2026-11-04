@@ -44,3 +44,11 @@ progress::-moz-progress-bar{background:#e63730;border-radius:4px}
 .ef-table small{color:#8b929c}
 .ef-table th .text-button{padding:0;text-align:left}
 #ef-search{min-width:180px}
+/* Методические материалы */
+.mt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px}
+.mt-card{background:#fff;border:1px solid #edf0f3;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.mt-card h3{margin:0;font-size:17px}
+.mt-card .card-description{margin:0}
+.mt-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:auto}
+.mt-actions .button{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
+.mt-scroll{max-height:180px;overflow:auto}
