@@ -1,5 +1,5 @@
 export function planFeatures(h){
- const {db,randomUUID,now,fail,required,str,canEdit,json,body,transaction,validatePersonIds,personForUser}=h;
+ const {db,randomUUID,now,fail,required,str,canEdit,json,body,transaction,validatePersonIds,personForUser,hooks}=h;
  db.exec(`CREATE TABLE IF NOT EXISTS item_subtasks(id TEXT PRIMARY KEY,item_id TEXT NOT NULL REFERENCES items(id),title TEXT NOT NULL,deadline TEXT NOT NULL DEFAULT '',assignee_ids TEXT NOT NULL DEFAULT '[]',done INTEGER NOT NULL DEFAULT 0,done_at TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL,updated TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS personal_entries(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,date TEXT NOT NULL,start_time TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',done INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL,updated TEXT NOT NULL);`);
  const validDate=d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&!isNaN(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d;
@@ -25,7 +25,7 @@ export function planFeatures(h){
    if(db.prepare('SELECT count(*) AS n FROM item_subtasks WHERE item_id=?').get(item.id).n>=100)fail('В одной задаче может быть не более 100 подзадач.');
    const v=subtaskValues(await body(req),u),id=randomUUID(),t=now(),position=db.prepare('SELECT COALESCE(MAX(position),0)+1 AS n FROM item_subtasks WHERE item_id=?').get(item.id).n;
    transaction(()=>{db.prepare('INSERT INTO item_subtasks(id,item_id,title,deadline,assignee_ids,position,created,updated) VALUES(?,?,?,?,?,?,?,?)').run(id,item.id,v.title,v.deadline,v.assignee_ids,position,t,t);event(item.id,u,`Добавлена подзадача «${v.title}».`);});
-   json(res,{subtask:subtaskView(db.prepare('SELECT * FROM item_subtasks WHERE id=?').get(id))},201);return true;
+   const created=db.prepare('SELECT * FROM item_subtasks WHERE id=?').get(id);hooks?.subtaskSaved(created,item,[],u);json(res,{subtask:subtaskView(created)},201);return true;
   }
   const sub=p.match(/^\/api\/subtasks\/([a-f0-9-]+)(\/remove)?$/);
   if(sub&&req.method==='POST'||sub&&req.method==='PUT'){
@@ -36,7 +36,7 @@ export function planFeatures(h){
    if(!editor&&!assignee)fail('Изменять подзадачу может Совет записи или её ответственный.',403);
    const b=await body(req),done=b.done===undefined?!!s.done:b.done===true,v=editor&&b.title!==undefined?subtaskValues(b,u,s):{title:s.title,deadline:s.deadline,assignee_ids:s.assignee_ids};
    transaction(()=>{db.prepare('UPDATE item_subtasks SET title=?,deadline=?,assignee_ids=?,done=?,done_at=?,updated=? WHERE id=?').run(v.title,v.deadline,v.assignee_ids,done?1:0,done?(s.done?s.done_at:now()):'',now(),s.id);if(done!==!!s.done)event(item.id,u,done?`Подзадача «${v.title}» выполнена.`:`Подзадача «${v.title}» снова в работе.`);else event(item.id,u,`Обновлена подзадача «${v.title}».`);});
-   json(res,{subtask:subtaskView(db.prepare('SELECT * FROM item_subtasks WHERE id=?').get(s.id))});return true;
+   const saved=db.prepare('SELECT * FROM item_subtasks WHERE id=?').get(s.id);hooks?.subtaskSaved(saved,item,JSON.parse(s.assignee_ids),u);json(res,{subtask:subtaskView(saved)});return true;
   }
   // Личные записи календаря видит и изменяет только их владелец.
   if(p==='/api/personal'&&req.method==='GET'){json(res,{entries:db.prepare('SELECT * FROM personal_entries WHERE user_id=? ORDER BY date,start_time').all(u.id).map(entryView)});return true;}

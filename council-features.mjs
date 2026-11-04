@@ -1,5 +1,5 @@
 export function councilFeatures(h){
- const {db,randomUUID,now,fail,required,str,admin,canEdit,json,body,transaction,manager,validatePersonIds,profileValues,publicPerson,canViewPerson,userRoles,roleLabels,canManage,canView,allowed,fullAccess,userPermissions}=h;
+ const {hooks,db,randomUUID,now,fail,required,str,admin,canEdit,json,body,transaction,manager,validatePersonIds,profileValues,publicPerson,canViewPerson,userRoles,roleLabels,canManage,canView,allowed,fullAccess,userPermissions}=h;
  db.exec(`CREATE TABLE IF NOT EXISTS council_directory(name TEXT PRIMARY KEY,level TEXT NOT NULL,parent TEXT NOT NULL DEFAULT '');
  CREATE TABLE IF NOT EXISTS council_roster(id TEXT PRIMARY KEY,council TEXT NOT NULL REFERENCES council_directory(name),name TEXT NOT NULL,position TEXT NOT NULL,updated TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS report_requests(id TEXT PRIMARY KEY,title TEXT NOT NULL,year INTEGER NOT NULL,deadline TEXT NOT NULL,created TEXT NOT NULL);
@@ -73,7 +73,7 @@ export function councilFeatures(h){
  if(!Array.isArray(b.councils)||!b.councils.length||b.councils.length>300)fail('Выберите от 1 до 300 Советов.');
  const targets=[...new Set(b.councils.map(c=>required(c,'Совет',200)))];
  for(const council of targets){if(!db.prepare('SELECT name FROM council_directory WHERE name=? UNION SELECT council FROM users WHERE council=?').get(council,council))fail('Добавьте Совет перед запросом отчёта.');if(!allowed(u,'request_reports',council))fail(`Совет «${council}» вне вашей зоны доступа.`,403);}
- const id=randomUUID();transaction(()=>{db.prepare('INSERT INTO report_requests VALUES(?,?,?,?,?)').run(id,title,y,deadline,now());for(const c of targets)db.prepare('INSERT INTO council_reports(id,request_id,council,year,updated) VALUES(?,?,?,?,?)').run(randomUUID(),id,c,y,now());});json(res,{id},201);return true;
+ const id=randomUUID();transaction(()=>{db.prepare('INSERT INTO report_requests VALUES(?,?,?,?,?)').run(id,title,y,deadline,now());for(const c of targets)db.prepare('INSERT INTO council_reports(id,request_id,council,year,updated) VALUES(?,?,?,?,?)').run(randomUUID(),id,c,y,now());});hooks?.reportRequested({id,title,deadline},targets,u);json(res,{id},201);return true;
  }
  if(p==='/api/council-reports'&&req.method==='POST'){
  const b=await body(req),council=manager(u)?required(b.council,'Совет',200):u.council,y=year(b.year),id=randomUUID();if(!canManage(u,council)&&council!==u.council)fail('Этот Совет вне вашей зоны доступа.',403);
