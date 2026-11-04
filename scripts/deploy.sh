@@ -4,9 +4,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+if [ -n "$(git status --porcelain)" ]; then echo "Есть несохранённые изменения. Сначала сделайте коммит, чтобы сайт совпадал с репозиторием." >&2; exit 1; fi
+
 NODE=$(command -v node || echo /c/Users/muhme/AppData/Local/OpenAI/Codex/runtimes/cua_node/989c7523a11c09b9/bin/node.exe)
 echo "== Тесты"
 "$NODE" --test
+
+echo "== GitHub"
+git push --quiet origin HEAD
 
 echo "== Упаковка"
 TS=$(date +%Y%m%d-%H%M%S)
