@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 test('Внешний режим защищает первичную настройку и cookies',{timeout:20000},async()=>{
  const data=mkdtempSync(join(tmpdir(),'sovety-host-test-')),code='test-code-for-isolated-server-0123456789';
- const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:'0',HOST:'0.0.0.0',PUBLIC_ORIGIN:'https://sovety.example',SETUP_CODE:code,SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:String(20000+Math.floor(Math.random()*20000)),HOST:'0.0.0.0',PUBLIC_ORIGIN:'https://sovety.example',SETUP_CODE:code,SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});
  try{
  const url=await new Promise((resolve,reject)=>{let output='';child.stdout.on('data',c=>{output+=c;const m=output.match(/http:\/\/127.0.0.1:\d+/);if(m)resolve(m[0]);});child.on('error',reject);child.on('exit',n=>reject(new Error('Server exit '+n)));});
  const bootstrap=await (await fetch(url+'/api/bootstrap')).json();assert.equal(bootstrap.hosted,true);assert.equal(bootstrap.setupCodeRequired,true);assert.ok(!JSON.stringify(bootstrap).includes(code));

@@ -22,7 +22,7 @@ test('Старые составы, должности и отчёты сохра
  db.prepare('INSERT INTO council_roster VALUES(?,?,?,?,?)').run('person','Совет','Иванов Иван Иванович','Председатель',new Date().toISOString());
  const months=Array.from({length:12},()=>[1,2,30,40]);
  db.prepare('INSERT INTO council_reports VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,null,'Совет',2026,'submitted',JSON.stringify(months),'Практика района','Практика школы',new Date().toISOString(),1);db.close();
- child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:'0',SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});
+ child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:String(20000+Math.floor(Math.random()*20000)),SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});
  const url=await new Promise((resolve,reject)=>{let text='';const timer=setTimeout(()=>reject(new Error('Startup timeout')),8000);child.stdout.on('data',c=>{text+=c;const m=text.match(/http:\/\/127.0.0.1:\d+/);if(m){clearTimeout(timer);resolve(m[0]);}});child.once('exit',()=>{clearTimeout(timer);reject(new Error('Server exited'));});});
  const login=await fetch(url+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'old@example.test',password})});const user=await login.json();assert.deepEqual(user.user.roles,['chair']);const cookie=login.headers.get('set-cookie').split(';')[0];
  const load=async()=>await (await fetch(url+'/api/council-data',{headers:{Cookie:cookie}})).json();

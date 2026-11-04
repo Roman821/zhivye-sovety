@@ -3,7 +3,7 @@ const root=dirname(dirname(fileURLToPath(import.meta.url)));
 test('Подзадачи, «Для кого» и личный календарь',{timeout:30000},async()=>{
  const data=mkdtempSync(join(tmpdir(),'sovety-plan-'));let child;
  try{
- child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:'0',SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});
+ child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:String(20000+Math.floor(Math.random()*20000)),SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});
  const url=await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(new Error(out)),8000);child.stdout.on('data',c=>{out+=c;const m=out.match(/http:\/\/127.0.0.1:\d+/);if(m){clearTimeout(t);resolve(m[0]);}});child.stderr.on('data',c=>out+=c);child.once('exit',()=>{clearTimeout(t);reject(new Error(out));});});
  async function req(p,method='GET',value,cookie){const r=await fetch(url+'/api'+p,{method,headers:{...(value?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})},body:value?JSON.stringify(value):undefined});return {status:r.status,data:await r.json()};}
  async function login(email,password){const r=await fetch(url+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});return r.headers.get('set-cookie').split(';')[0];}

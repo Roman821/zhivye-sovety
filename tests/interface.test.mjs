@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-const source=['app.js','plan.js'].map(f=>readFileSync(new URL('../public/'+f,import.meta.url),'utf8')).join('\n');
+const source=['app.js','plan.js','efficiency.js'].map(f=>readFileSync(new URL('../public/'+f,import.meta.url),'utf8')).join('\n');
 function app(){const nodes={};const context=vm.createContext({console,setTimeout,clearTimeout,URL,Intl,Date,fetch:()=>new Promise(()=>{}),window:{scrollTo(){}},document:{querySelector:s=>nodes[s]||(nodes[s]={innerHTML:'',textContent:'',classList:{add(){},remove(){}},showModal(){},close(){}}),addEventListener(){}}});vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),nodes};}
 test('Поиск и сочетание фильтров работают независимо от вида списка',()=>{const a=app();a.run('state.items=demoItems;state.demo=true');assert.equal(a.run('filtered().length'),6);a.run("state.query='наставничества'");assert.equal(a.run('filtered()[0].title'),'Совет — Совету');a.run("state.query='';state.council='Ширинский район';state.status='progress'");assert.equal(a.run('filtered().length'),2);a.run("state.page='initiative'");assert.equal(a.run('filtered().length'),1);a.run("state.view='list';render()");assert.ok(a.nodes['#app'].innerHTML.includes('class="rows"'));});
 test('Просроченные записи не включают завершённые и архивные',()=>{const a=app();a.run("state.items=[{deadline:'2000-01-01',status:'progress',updated:'1'},{deadline:'2000-01-01',status:'done',updated:'1'},{deadline:'2000-01-01',status:'archive',updated:'1'}];state.status='overdue'");assert.equal(a.run('filtered().length'),1);});
@@ -16,3 +16,16 @@ test('Календарь показывает подзадачи, просроч
  let html=a.run('calendar()');assert.ok(html.includes('Форум'));assert.ok(html.includes('↳ Площадка'));assert.ok(html.includes('↳ Афиша'));assert.ok(!html.includes('Личная встреча'));
  a.run("state.calendarMode='mine'");html=a.run('calendar()');assert.ok(html.includes('Личная встреча'));assert.ok(html.includes('↳ Площадка'));assert.ok(!html.includes('↳ Афиша'));assert.ok(!html.includes('>Форум<'));
  assert.ok(a.run("subtaskProgress(state.items[0])").includes('Подзадачи: 0 из 2'));});
+test('Общая эффективность считает баллы, сроки, посещаемость и итоги Советов за период',()=>{const a=app();a.run(`state.demo=false;state.user={id:'u1',name:'Анна',council:'Шира',role:'admin'};
+ state.peopleData={directory:[{name:'Шира',level:'local'},{name:'Школа',level:'primary'}],people:[{id:'p1',name:'Анна',council:'Шира',positions:[],memberships:[]},{id:'p2',name:'Борис',council:'Школа',positions:[],memberships:[]}],
+ items:[{id:'t1',kind:'task',status:'done',assignee_ids:['p1'],deadline:'2026-03-10',created:'2026-03-01T00:00:00Z',completed_at:'2026-03-09T05:00:00Z',completed_deadline:'2026-03-10'},{id:'t2',kind:'task',status:'progress',assignee_ids:['p1'],deadline:'2026-03-15',created:'2026-03-01T00:00:00Z'},{id:'i1',kind:'initiative',status:'new',assignee_ids:[],author_person_id:'p2',created:'2026-07-02T00:00:00Z',deadline:''}],
+ meetings:[{date:'2026-03-20',attendance:[{person_id:'p1',status:'present'},{person_id:'p2',status:'absent'}]},{date:'2026-04-20',attendance:[{person_id:'p1',status:'absent'}]}],appearances:[{date:'2026-03-25',participant_ids:['p2']}]};
+ state.items=[{id:'t1',subtasks:[{id:'s1',title:'Шаг',deadline:'2026-03-05',assignee_ids:['p1'],done:true,done_at:'2026-03-06T05:00:00Z',created:'2026-03-01T00:00:00Z'}]},{id:'t2',subtasks:[]},{id:'i1',subtasks:[]}];efYear=2026;efPeriod='';`);
+ const rows=a.run('efRows()'),anna=rows.find(r=>r.person.id==='p1'),boris=rows.find(r=>r.person.id==='p2');
+ // Анна: задача 3 + подзадача 2 + заседание 2 − просрочка 2 = 5; вовремя 1 из (2 выполненных + 1 просрочка).
+ assert.equal(anna.score,5);assert.equal(anna.completed,2);assert.equal(anna.overdue,1);assert.equal(anna.discipline,33);assert.equal(anna.attendance,50);assert.equal(JSON.stringify(anna.monthly[2]),'[2,1,0]');
+ assert.equal(boris.score,5);assert.equal(boris.attendance,0);assert.equal(boris.events,1);assert.equal(boris.initiatives,1);
+ a.run("efPeriod='q1'");const q1=a.run('efRows()').find(r=>r.person.id==='p2');assert.equal(q1.initiatives,0);assert.equal(q1.score,2);
+ a.run("efPeriod='';efLevel='primary'");assert.equal(a.run('efRows().map(r=>r.person.name).join()'),'Борис');
+ a.run("efLevel=''");const totals=a.run('efCouncilTotals(efRows())');assert.equal(totals.length,2);assert.equal(totals.find(t=>t.council==='Шира').attendance,50);
+ a.run("state.page='efficiency'");const html=a.run('efficiencyPage()');assert.ok(html.includes('Рейтинг участников'));assert.ok(html.includes('Итоги по Советам'));});

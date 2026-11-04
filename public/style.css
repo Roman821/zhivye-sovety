@@ -37,3 +37,10 @@ progress::-moz-progress-bar{background:#e63730;border-radius:4px}
 .calendar-event.done{opacity:.55;text-decoration:line-through}
 .calendar-legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .calendar-legend .calendar-event{display:inline-block;width:auto;margin:0;pointer-events:none}
+/* Общая эффективность */
+.ef-bars{width:100%;height:auto;max-height:340px}
+.ef-bars text{fill:#2f3540}
+.ef-table td.overdue{color:#c43d33;font-weight:600}
+.ef-table small{color:#8b929c}
+.ef-table th .text-button{padding:0;text-align:left}
+#ef-search{min-width:180px}
