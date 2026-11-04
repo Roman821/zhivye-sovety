@@ -41,5 +41,6 @@ systemctl restart sovety
 exit 1
 EOF
 
-CODE=$(curl -fsS -o /dev/null -w "%{http_code}" https://academic-sweet-trail.ihchost.rocks/api/bootstrap)
-echo "== Публичный адрес: HTTP $CODE"
+SITE=$(ssh sovety "sed -n 's/^PUBLIC_ORIGIN=//p' /etc/sovety.env")
+CODE=$(curl -fsS -o /dev/null -w "%{http_code}" "$SITE/api/bootstrap")
+echo "== Публичный адрес $SITE: HTTP $CODE"
