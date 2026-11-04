@@ -1,0 +1,39 @@
+#!/bin/bash
+# Выкладка на сервер: тесты → копия базы → замена кода → перезапуск → проверка, при сбое откат.
+# Нужен SSH-доступ под именем «sovety» (~/.ssh/config).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+NODE=$(command -v node || echo /c/Users/muhme/AppData/Local/OpenAI/Codex/runtimes/cua_node/989c7523a11c09b9/bin/node.exe)
+echo "== Тесты"
+"$NODE" --test
+
+echo "== Упаковка"
+TS=$(date +%Y%m%d-%H%M%S)
+ARCHIVE=$(mktemp -d)/sovety-app-$TS.tar.gz
+tar -czf "$ARCHIVE" server.mjs council-features.mjs people-features.mjs registration-features.mjs package.json public
+scp -q "$ARCHIVE" sovety:/tmp/sovety-app.tar.gz
+
+echo "== Установка на сервере"
+ssh sovety TS="$TS" bash -s <<'EOF'
+set -euo pipefail
+sqlite3 /var/lib/sovety/sovety.sqlite ".backup '/var/backups/sovety/pre-deploy-$TS.sqlite'"
+chmod 600 /var/backups/sovety/pre-deploy-$TS.sqlite
+rm -rf /opt/sovety.prev
+cp -a /opt/sovety /opt/sovety.prev
+rm -rf /opt/sovety.new && mkdir /opt/sovety.new
+tar -xzf /tmp/sovety-app.tar.gz -C /opt/sovety.new
+chown -R root:root /opt/sovety.new && chmod -R go-w /opt/sovety.new
+rm -rf /opt/sovety && mv /opt/sovety.new /opt/sovety
+systemctl restart sovety
+for i in $(seq 1 20); do
+  curl -fsS http://127.0.0.1:18765/api/bootstrap >/dev/null 2>&1 && { echo "DEPLOY_OK $TS"; exit 0; }
+  sleep 1
+done
+echo "Сайт не ответил — откат на прошлую версию" >&2
+rm -rf /opt/sovety && mv /opt/sovety.prev /opt/sovety
+systemctl restart sovety
+exit 1
+EOF
+
+curl -fsS -o /dev/null -w "== Публичный адрес: HTTP %{http_code}\n" https://academic-sweet-trail.ihchost.rocks/api/bootstrap
