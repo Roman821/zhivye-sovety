@@ -61,13 +61,14 @@ test('Рабочий цикл, роли, защита и сохранение д
  assert.equal((await request('/register',{method:'POST',body:{name:'Дубль',email:'second@example.test',password:profile.password,code:inv.data.code}})).status,400);
  assert.equal((await request('/invites',{method:'POST',cookie:chair,body:{role:'secretary',council:'test'}})).status,403);
  assert.equal((await request('/members',{cookie:chair})).status,403);
- assert.equal((await request('/items/'+id,{method:'PUT',cookie:chair,body:{...item,title:'Чужое изменение',version:1}})).status,403);
+ assert.equal((await request('/items/'+id,{method:'PUT',cookie:chair,body:{...item,title:'Чужое изменение',version:1}})).status,404);
  const own=await request('/items',{method:'POST',cookie:chair,body:{...item,council:'Подменённый Совет',title:'Идея района'}});assert.equal(own.data.item.council,'Ширинский район');
  const upd=await request('/items/'+own.data.item.id,{method:'PUT',cookie:chair,body:{...own.data.item,status:'progress'}});assert.equal(upd.status,200);assert.equal(upd.data.item.version,2);
  assert.equal((await request('/items/'+own.data.item.id,{method:'PUT',cookie:chair,body:{...own.data.item,status:'discussion'}})).status,409);
  assert.equal((await request('/items/'+own.data.item.id,{method:'PUT',cookie:chair,body:{...upd.data.item,status:'done'}})).status,400);
  assert.equal((await request('/items/'+own.data.item.id,{method:'PUT',cookie:chair,body:{...upd.data.item,status:'done',result:'Провели встречу и записали решения'}})).status,200);
- assert.equal((await request('/items/'+id+'/comments',{method:'POST',cookie:chair,body:{body:'Готовы подключиться'}})).status,201);
+ assert.equal((await request('/items/'+id+'/comments',{method:'POST',cookie:chair,body:{body:'Готовы подключиться'}})).status,404);
+ assert.equal((await request('/items/'+id+'/comments',{method:'POST',cookie:admin,body:{body:'Готовы подключиться'}})).status,201);
  const detail=await request('/items/'+id,{cookie:admin});assert.equal(detail.data.events.length,2);assert.equal(detail.data.events[1].event_type,'comment');
  const members=await request('/members',{cookie:admin});assert.equal(members.data.members.length,2);assert.ok(members.data.members.every(m=>!m.password));
  assert.equal((await request('/members/access',{method:'POST',cookie:admin,body:{id:reg.data.user.id,active:false}})).status,200);

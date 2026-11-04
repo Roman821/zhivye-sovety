@@ -1,5 +1,5 @@
 export function councilFeatures(h){
- const {db,randomUUID,now,fail,required,str,admin,canEdit,json,body,transaction,manager,validatePersonIds,profileValues,publicPerson,canViewPerson,userRoles,roleLabels}=h;
+ const {db,randomUUID,now,fail,required,str,admin,canEdit,json,body,transaction,manager,validatePersonIds,profileValues,publicPerson,canViewPerson,userRoles,roleLabels,canManage,canView,allowed,fullAccess,userPermissions}=h;
  db.exec(`CREATE TABLE IF NOT EXISTS council_directory(name TEXT PRIMARY KEY,level TEXT NOT NULL,parent TEXT NOT NULL DEFAULT '');
  CREATE TABLE IF NOT EXISTS council_roster(id TEXT PRIMARY KEY,council TEXT NOT NULL REFERENCES council_directory(name),name TEXT NOT NULL,position TEXT NOT NULL,updated TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS report_requests(id TEXT PRIMARY KEY,title TEXT NOT NULL,year INTEGER NOT NULL,deadline TEXT NOT NULL,created TEXT NOT NULL);
@@ -36,13 +36,22 @@ export function councilFeatures(h){
  if(p==='/api/council-data'&&req.method==='GET'){
  const directory=db.prepare('SELECT * FROM council_directory ORDER BY name').all();
  const names=[...new Set([...directory.map(c=>c.name),...db.prepare('SELECT DISTINCT council FROM users WHERE active=1').all().map(c=>c.council)])].sort();
- const baseRoster=(manager(u)?db.prepare('SELECT * FROM council_roster WHERE archived=0 ORDER BY council,name').all():db.prepare('SELECT * FROM council_roster WHERE council=? AND archived=0 ORDER BY name').all(u.council)).map(r=>rosterFor(r,u));
- const linked=db.prepare('SELECT m.council AS member_council,m.positions AS member_positions,r.* FROM council_memberships m JOIN council_roster r ON r.id=m.person_id WHERE r.archived=0 AND m.council<>r.council ORDER BY m.council,r.name').all().filter(r=>manager(u)||r.member_council===u.council).map(r=>({...rosterFor(r,u),council:r.member_council,home_council:r.council,positions:JSON.parse(r.member_positions),membership:true,can_edit:canEdit(u,r)&&canEdit(u,{council:r.member_council})}));
- json(res,{directory,names,roster:[...baseRoster,...linked],requests:manager(u)?db.prepare('SELECT * FROM report_requests ORDER BY created DESC').all():db.prepare('SELECT DISTINCT q.* FROM report_requests q JOIN council_reports r ON r.request_id=q.id WHERE r.council=? ORDER BY q.created DESC').all(u.council),reports:(manager(u)?db.prepare("SELECT * FROM council_reports WHERE deleted_at='' ORDER BY updated DESC").all():db.prepare("SELECT * FROM council_reports WHERE council=? AND deleted_at='' ORDER BY updated DESC").all(u.council)).map(report),deletedReports:(manager(u)?db.prepare("SELECT * FROM council_reports WHERE deleted_at<>'' ORDER BY deleted_at DESC").all():db.prepare("SELECT * FROM council_reports WHERE council=? AND deleted_at<>'' ORDER BY deleted_at DESC").all(u.council)).map(report)});return true;
+ const baseRoster=db.prepare('SELECT * FROM council_roster WHERE archived=0 ORDER BY council,name').all().filter(r=>canView(u,r.council)||r.user_id===u.id).map(r=>rosterFor(r,u));
+ const linked=db.prepare('SELECT m.council AS member_council,m.positions AS member_positions,r.* FROM council_memberships m JOIN council_roster r ON r.id=m.person_id WHERE r.archived=0 AND m.council<>r.council ORDER BY m.council,r.name').all().filter(r=>canView(u,r.member_council)).map(r=>({...rosterFor(r,u),council:r.member_council,home_council:r.council,positions:JSON.parse(r.member_positions),membership:true,can_edit:canEdit(u,r)&&canEdit(u,{council:r.member_council})}));
+ const visibleReport=r=>canManage(u,r.council)||r.council===u.council||allowed(u,'view_reports',r.council)||allowed(u,'request_reports',r.council);
+ const allReports=db.prepare('SELECT * FROM council_reports ORDER BY updated DESC').all().filter(visibleReport),requestIds=new Set(allReports.map(r=>r.request_id));
+ json(res,{directory,names,roster:[...baseRoster,...linked],requests:db.prepare('SELECT * FROM report_requests ORDER BY created DESC').all().filter(q=>fullAccess(u)||requestIds.has(q.id)),reports:allReports.filter(r=>!r.deleted_at).map(report),deletedReports:allReports.filter(r=>r.deleted_at).sort((a,b)=>b.deleted_at.localeCompare(a.deleted_at)).map(report)});return true;
  }
  if(p==='/api/council-directory'&&req.method==='POST'){if(u.signup_source==='self'&&!manager(u))fail('Советы добавляет управляющий.',403);
- const b=await body(req),name=required(b.name,'Название Совета',200);if(!canEdit(u,{council:name}))fail('Можно вести только свой Совет.',403);
+ const b=await body(req),name=required(b.name,'Название Совета',200),known=db.prepare('SELECT * FROM council_directory WHERE name=?').get(name);
  if(!['regional','local','primary'].includes(b.level))fail('Выберите уровень Совета.');const parent=str(b.parent,200);if(parent===name)fail('Совет не может быть вышестоящим для себя.');
+ if(parent&&!db.prepare('SELECT name FROM council_directory WHERE name=?').get(parent))fail('Вышестоящий Совет не найден в списке.');
+ if(!fullAccess(u)){
+  if(b.level==='regional'&&known?.level!=='regional')fail('Региональный уровень назначают координатор или специалист.',403);
+  if(known?!(canManage(u,name)||u.council===name):!(manager(u)&&b.level==='primary'&&canManage(u,parent)))fail(known?'Можно вести только Советы своей зоны доступа.':'Новый Совет можно добавить только как первичный внутри своего района.',403);
+  if(known&&parent!==known.parent&&!canManage(u,parent||name))fail('Перенести Совет можно только внутри своего района.',403);
+  if(parent&&!canManage(u,parent)&&!(known&&parent===known.parent))fail('Вышестоящий Совет вне вашей зоны доступа.',403);
+ }
  db.prepare('INSERT INTO council_directory VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET level=excluded.level,parent=excluded.parent').run(name,b.level,parent);json(res,{ok:true});return true;
  }
  if(p==='/api/council-roster'&&req.method==='POST'){
@@ -59,15 +68,15 @@ export function councilFeatures(h){
  if(u.signup_source==='self'&&!manager(u))fail('Исключать участников может управляющий.',403);const b=await body(req),old=db.prepare('SELECT * FROM council_roster WHERE id=?').get(b.id);if(!old)fail('Участник не найден.',404);if(!canEdit(u,old))fail('Нет доступа к этому составу.',403);db.prepare('UPDATE council_roster SET archived=1 WHERE id=?').run(b.id);json(res,{ok:true});return true;
  }
  if(p==='/api/report-requests'&&req.method==='POST'){
- admin(u);const b=await body(req),title=required(b.title,'Название запроса',200),y=year(b.year),deadline=required(b.deadline,'Срок',10);
+ if(!manager(u)&&!userPermissions(u).includes('request_reports'))admin(u);const b=await body(req),title=required(b.title,'Название запроса',200),y=year(b.year),deadline=required(b.deadline,'Срок',10);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(deadline)||isNaN(Date.parse(deadline))||new Date(deadline).toISOString().slice(0,10)!==deadline)fail('Проверьте дату срока.');
  if(!Array.isArray(b.councils)||!b.councils.length||b.councils.length>300)fail('Выберите от 1 до 300 Советов.');
  const targets=[...new Set(b.councils.map(c=>required(c,'Совет',200)))];
- for(const council of targets)if(!db.prepare('SELECT name FROM council_directory WHERE name=? UNION SELECT council FROM users WHERE council=?').get(council,council))fail('Добавьте Совет перед запросом отчёта.');
+ for(const council of targets){if(!db.prepare('SELECT name FROM council_directory WHERE name=? UNION SELECT council FROM users WHERE council=?').get(council,council))fail('Добавьте Совет перед запросом отчёта.');if(!allowed(u,'request_reports',council))fail(`Совет «${council}» вне вашей зоны доступа.`,403);}
  const id=randomUUID();transaction(()=>{db.prepare('INSERT INTO report_requests VALUES(?,?,?,?,?)').run(id,title,y,deadline,now());for(const c of targets)db.prepare('INSERT INTO council_reports(id,request_id,council,year,updated) VALUES(?,?,?,?,?)').run(randomUUID(),id,c,y,now());});json(res,{id},201);return true;
  }
  if(p==='/api/council-reports'&&req.method==='POST'){
- const b=await body(req),council=manager(u)?required(b.council,'Совет',200):u.council,y=year(b.year),id=randomUUID();
+ const b=await body(req),council=manager(u)?required(b.council,'Совет',200):u.council,y=year(b.year),id=randomUUID();if(!canManage(u,council)&&council!==u.council)fail('Этот Совет вне вашей зоны доступа.',403);
  db.prepare('INSERT INTO council_reports(id,council,year,updated) VALUES(?,?,?,?)').run(id,council,y,now());json(res,{report:report(db.prepare('SELECT * FROM council_reports WHERE id=?').get(id))},201);return true;
  }
  const removal=p.match(/^\/api\/council-reports\/([a-f0-9-]+)\/(trash|restore)$/);
