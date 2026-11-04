@@ -1,0 +1,87 @@
+import https from 'node:https';import http from 'node:http';import tls from 'node:tls';import {readFileSync,existsSync} from 'node:fs';import {join,dirname} from 'node:path';import {fileURLToPath} from 'node:url';import {randomUUID} from 'node:crypto';
+import {platformGuide} from './ai-guide.mjs';
+// «Советник» — помощник на GigaChat. Модель не получает базу целиком: она вызывает поисковые функции,
+// которые выполняются с правами спрашивающего и не отдают контакты, даты рождения и фото.
+export function aiFeatures(h){
+ const {db,now,fail,str,json,body,canView,canEdit,canManage,allowed,canViewPerson,materialsVisible}=h;
+ const root=dirname(fileURLToPath(import.meta.url));
+ const key=process.env.GIGACHAT_AUTH_KEY||'',scope=process.env.GIGACHAT_SCOPE||'GIGACHAT_API_PERS',model=process.env.GIGACHAT_MODEL||'GigaChat-2';
+ const oauthUrl=process.env.GIGACHAT_OAUTH_URL||'https://ngw.devices.sberbank.ru:9443/api/v2/oauth',apiUrl=(process.env.GIGACHAT_API_URL||'https://api.giga.chat/v1').replace(/\/$/,'');
+ const dailyLimit=Number(process.env.GIGACHAT_DAILY_LIMIT||40),dailyTokens=Number(process.env.GIGACHAT_DAILY_TOKENS||1500000);
+ // Сертификат Минцифры доверяется только для запросов к GigaChat, а не для всего сервера.
+ const caFile=process.env.GIGACHAT_CA_FILE||join(root,'certs','russian_trusted_ca.pem');
+ const ca=existsSync(caFile)?[...tls.rootCertificates,readFileSync(caFile,'utf8')]:undefined;
+ const enabled=!!key;
+ db.exec('CREATE TABLE IF NOT EXISTS ai_usage(user_id TEXT NOT NULL,day TEXT NOT NULL,questions INTEGER NOT NULL DEFAULT 0,tokens INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,day));');
+ function send(url,{method='POST',headers={},payload}){return new Promise((resolve,reject)=>{const u=new URL(url),lib=u.protocol==='https:'?https:http;const data=payload===undefined?undefined:Buffer.from(payload);
+  const r=lib.request(u,{method,headers:{...headers,...(data?{'Content-Length':data.length}:{})},ca:u.protocol==='https:'?ca:undefined,timeout:60000},res=>{let text='';res.setEncoding('utf8');res.on('data',c=>text+=c);res.on('end',()=>{let v=null;try{v=JSON.parse(text);}catch{}resolve({status:res.statusCode,data:v,text});});});
+  r.on('timeout',()=>r.destroy(new Error('GigaChat не ответил вовремя.')));r.on('error',reject);if(data)r.write(data);r.end();});}
+ let token={value:'',expires:0};
+ async function accessToken(){if(token.value&&token.expires-60000>Date.now())return token.value;const r=await send(oauthUrl,{headers:{Authorization:'Basic '+key,RqUID:randomUUID(),'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},payload:'scope='+encodeURIComponent(scope)});if(r.status!==200||!r.data?.access_token){console.error('GigaChat: ошибка авторизации',r.status,r.text.slice(0,200));fail('Советник временно недоступен: не удалось подключиться к GigaChat.',503);}token={value:r.data.access_token,expires:Number(r.data.expires_at)||Date.now()+25*60000};return token.value;}
+ async function complete(messages){const r=await send(apiUrl+'/chat/completions',{headers:{Authorization:'Bearer '+await accessToken(),'Content-Type':'application/json',Accept:'application/json'},payload:JSON.stringify({model,messages,functions,function_call:'auto',temperature:0.2,max_tokens:1200})});if(r.status===401){token.value='';}if(r.status!==200||!r.data?.choices?.length){console.error('GigaChat: ошибка ответа',r.status,r.text.slice(0,300));fail(r.status===429?'Советник перегружен. Попробуйте через минуту.':'Советник временно недоступен. Попробуйте позже.',503);}return r.data;}
+ // ——— Данные для функций (только в пределах прав) ———
+ const kinds={task:'задача',initiative:'инициатива',project:'проект',problem:'проблема',meeting:'заседание',vks:'ВКС'},statuses={new:'новая',discussion:'обсуждение',progress:'в работе',done:'завершена',archive:'в архиве'};
+ const localDay=(d=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Krasnoyarsk',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+ const personName=id=>db.prepare('SELECT name FROM council_roster WHERE id=?').get(id)?.name||'участник';
+ const me=u=>db.prepare('SELECT id FROM council_roster WHERE user_id=? AND archived=0').get(u.id)?.id;
+ const visibleItems=u=>db.prepare("SELECT * FROM items WHERE status<>'archive' ORDER BY deadline='' ,deadline").all().filter(i=>canView(u,i.council)||canEdit(u,i));
+ const subtasksOf=id=>db.prepare('SELECT * FROM item_subtasks WHERE item_id=? ORDER BY position').all(id);
+ const words=q=>str(q,200).toLocaleLowerCase('ru-RU').replace(/ё/g,'е').split(/\s+/).filter(w=>w.length>1);
+ const matches=(text,q)=>{const w=words(q);if(!w.length)return true;const t=text.toLocaleLowerCase('ru-RU').replace(/ё/g,'е');return w.some(x=>t.includes(x.slice(0,Math.max(3,x.length-2))));};
+ function brief(i,today){const subs=subtasksOf(i.id),done=subs.filter(s=>s.done).length;return {id:i.id,ссылка:'/#item='+i.id,название:i.title,тип:kinds[i.kind],статус:statuses[i.status],совет:i.council,срок:i.deadline||'без срока',просрочено:!!(i.deadline&&i.deadline<today&&!['done','archive'].includes(i.status)),ответственные:i.owner,...(subs.length?{подзадачи:`${done} из ${subs.length}`}:{}),...(i.start_time?{время:i.start_time}:{})};}
+ const tools={
+  find_records:{description:'Найти записи платформы: задачи и пункты плана, инициативы, проекты, проблемы, запланированные заседания и ВКС. Используй для вопросов о работе Советов, сроках, просрочках, ответственных.',parameters:{type:'object',properties:{query:{type:'string',description:'Слова для поиска в названии и описании'},kind:{type:'string',enum:Object.keys(kinds),description:'Тип записи'},status:{type:'string',enum:['new','discussion','progress','done'],description:'Статус'},council:{type:'string',description:'Название или часть названия Совета'},overdue:{type:'boolean',description:'Только просроченные'},mine:{type:'boolean',description:'Только где спрашивающий ответственный'}}},
+   run(a,u){const today=localDay(),pid=me(u);let list=visibleItems(u).filter(i=>(!a.kind||i.kind===a.kind)&&(!a.status||i.status===a.status)&&(!a.council||matches(i.council,a.council))&&(!a.query||matches(i.title+' '+i.description,a.query))&&(!a.overdue||(i.deadline&&i.deadline<today&&!['done','archive'].includes(i.status)))&&(!a.mine||(pid&&JSON.parse(i.assignee_ids).includes(pid))));return {найдено:list.length,записи:list.slice(0,25).map(i=>brief(i,today))};}},
+  record_details:{description:'Подробности одной записи по её id: описание, ожидаемый результат, следующий шаг, нужная помощь, подзадачи с ответственными, последние комментарии.',parameters:{type:'object',properties:{id:{type:'string',description:'id записи из find_records или calendar'}},required:['id']},
+   run(a,u){const i=db.prepare('SELECT * FROM items WHERE id=?').get(str(a.id,100));if(!i||!(canView(u,i.council)||canEdit(u,i)))return {ошибка:'Запись не найдена или недоступна.'};const today=localDay();return {...brief(i,today),описание:i.description.slice(0,1500),ожидаемый_результат:i.goal,следующий_шаг:i.next_step,нужна_помощь:i.needs,результат:i.result,место:i.location,подзадачи:subtasksOf(i.id).map(s=>({название:s.title,срок:s.deadline||'без срока',выполнена:!!s.done,просрочена:!s.done&&!!s.deadline&&s.deadline<today,ответственные:JSON.parse(s.assignee_ids).map(personName).join(', ')})),комментарии:db.prepare("SELECT author,body,created FROM events WHERE item_id=? AND event_type='comment' ORDER BY created DESC LIMIT 5").all(i.id).map(e=>({автор:e.author,текст:e.body.slice(0,400),дата:e.created.slice(0,10)}))};}},
+  calendar:{description:'Календарь за период: сроки задач и подзадач, заседания и ВКС, а также личные записи спрашивающего. Для вопросов «что у меня на неделе», «что запланировано в ноябре».',parameters:{type:'object',properties:{from:{type:'string',description:'Начало периода ГГГГ-ММ-ДД'},to:{type:'string',description:'Конец периода ГГГГ-ММ-ДД'},mine:{type:'boolean',description:'Только своё: где спрашивающий ответственный, для кого запись, личные записи'}},required:['from','to']},
+   run(a,u){const from=str(a.from,10),to=str(a.to,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))return {ошибка:'Даты нужны в формате ГГГГ-ММ-ДД.'};const today=localDay(),pid=me(u),inRange=d=>d&&d>=from&&d<=to,out=[];
+    for(const i of visibleItems(u)){const forMe=pid&&(JSON.parse(i.assignee_ids).includes(pid)||(i.audience==='people'&&JSON.parse(i.audience_ids).includes(pid))||(i.audience!=='people'&&['meeting','vks'].includes(i.kind)&&i.council===u.council));if(inRange(i.deadline)&&(!a.mine||forMe))out.push({дата:i.deadline,...brief(i,today)});for(const s of subtasksOf(i.id))if(inRange(s.deadline)&&(!a.mine||JSON.parse(s.assignee_ids).includes(pid)))out.push({дата:s.deadline,подзадача:s.title,задача:i.title,ссылка:'/#item='+i.id,выполнена:!!s.done,ответственные:JSON.parse(s.assignee_ids).map(personName).join(', ')});}
+    for(const e of db.prepare('SELECT * FROM personal_entries WHERE user_id=? AND date>=? AND date<=? ORDER BY date').all(u.id,from,to))out.push({дата:e.date,личная_запись:e.title,время:e.start_time,выполнена:!!e.done});
+    out.sort((x,y)=>x.дата.localeCompare(y.дата));return {период:`${from} — ${to}`,событий:out.length,события:out.slice(0,40)};}},
+  meetings:{description:'Прошедшие заседания и ВКС с итогами: дата, формат, сколько присутствовало, решения, следующие шаги.',parameters:{type:'object',properties:{council:{type:'string',description:'Название или часть названия Совета'},from:{type:'string',description:'С даты ГГГГ-ММ-ДД'},to:{type:'string',description:'По дату ГГГГ-ММ-ДД'}}},
+   run(a,u){const list=db.prepare('SELECT * FROM council_meetings ORDER BY date DESC').all().filter(m=>(canView(u,m.council)||canEdit(u,m))&&(!a.council||matches(m.council,a.council))&&(!a.from||m.date>=a.from)&&(!a.to||m.date<=a.to));return {найдено:list.length,заседания:list.slice(0,15).map(m=>{const att=JSON.parse(m.attendance);return {совет:m.council,тема:m.title,дата:m.date,формат:{in_person:'очно',vks:'ВКС',hybrid:'смешанный'}[m.format],присутствовали:att.filter(x=>x.status==='present').length,отмечено:att.length,гостей:m.guests,решения:m.decisions.slice(0,800),следующие_шаги:m.next_steps.slice(0,500),ссылка:'/#page=meetings'};})};}},
+  reports:{description:'Состояние отчётности: какие отчёты запрошены, у кого черновик или отправлен, сроки.',parameters:{type:'object',properties:{year:{type:'integer',description:'Отчётный год'},council:{type:'string',description:'Название или часть названия Совета'}}},
+   run(a,u){const list=db.prepare("SELECT r.*,q.title AS request_title,q.deadline AS request_deadline FROM council_reports r LEFT JOIN report_requests q ON q.id=r.request_id WHERE r.deleted_at='' ORDER BY r.updated DESC").all().filter(r=>(canManage(u,r.council)||r.council===u.council||allowed(u,'view_reports',r.council)||allowed(u,'request_reports',r.council))&&(!a.year||r.year===a.year)&&(!a.council||matches(r.council,a.council)));return {найдено:list.length,отчёты:list.slice(0,30).map(r=>({совет:r.council,год:r.year,запрос:r.request_title||'самостоятельный отчёт',срок:r.request_deadline||'',статус:r.status==='submitted'?'отправлен':'черновик',мероприятий:JSON.parse(r.activities).length,ссылка:'/#page=reports'}))};}},
+  councils:{description:'Список доступных Советов: уровень, вышестоящий Совет, число участников и активных записей.',parameters:{type:'object',properties:{}},
+   run(a,u){return {советы:db.prepare('SELECT * FROM council_directory ORDER BY name').all().filter(c=>canView(u,c.name)).map(c=>({название:c.name,уровень:{regional:'региональный',local:'местный',primary:'первичный'}[c.level],вышестоящий:c.parent||'',участников:db.prepare('SELECT count(*) AS n FROM council_roster WHERE council=? AND archived=0').get(c.name).n,активных_записей:db.prepare("SELECT count(*) AS n FROM items WHERE council=? AND status NOT IN ('done','archive')").get(c.name).n}))};}},
+  people:{description:'Участники Советов: ФИО, должности, Совет. Без контактов. Для вопросов «кто председатель», «кто в составе».',parameters:{type:'object',properties:{council:{type:'string',description:'Название или часть названия Совета'},query:{type:'string',description:'Часть ФИО или должности'}}},
+   run(a,u){const list=db.prepare('SELECT * FROM council_roster WHERE archived=0 ORDER BY council,name').all().filter(p=>canViewPerson(u,p)&&(!a.council||matches(p.council,a.council))&&(!a.query||matches(p.name+' '+p.positions,a.query)));return {найдено:list.length,участники:list.slice(0,40).map(p=>({фио:p.name,должности:(JSON.parse(p.positions).length?JSON.parse(p.positions):[p.position]).join(', '),совет:p.council}))};}},
+  materials:{description:'Методические материалы: документы, презентации, записи ВКС, полезные ссылки.',parameters:{type:'object',properties:{query:{type:'string',description:'Слова для поиска'},category:{type:'string',enum:['methodics','documents','presentations','vks','links','other']}}},
+   run(a,u){const list=materialsVisible(u).filter(m=>(!a.category||m.category===a.category)&&(!a.query||matches(m.title+' '+m.description,a.query)));return {найдено:list.length,материалы:list.slice(0,20).map(m=>({название:m.title,описание:m.description.slice(0,300),файл:m.file_name||'',ссылка:'/#page=materials'}))};}}
+ };
+ const functions=Object.entries(tools).map(([name,t])=>({name,description:t.description,parameters:t.parameters}));
+ function system(u){const roles=JSON.parse(u.roles||'[]');return `Ты «Советник» — помощник платформы «Живые Советы · Хакасия» для Советов Первых. Отвечай по-русски, коротко, дружелюбно и по делу.
+Сегодня ${localDay()} (время Красноярска). Спрашивает: ${u.name}, Совет: ${u.council}, должности: ${roles.join(', ')||u.role}.
+Правила:
+- Вопросы «как сделать» отвечай по инструкции ниже, называй раздел и кнопки.
+- Вопросы о задачах, сроках, проектах, заседаниях, отчётах, составах и материалах — только по данным из функций. Ничего не придумывай. Если данных нет, так и скажи.
+- Функции уже учитывают права пользователя: не обещай показать то, чего нет в их ответе.
+- Давай ссылки на записи и разделы в виде [название](/#item=ID) или [раздел](/#page=calendar), используя значения «ссылка» из функций и адреса из инструкции.
+- Не раскрывай телефоны, адреса, даты рождения, ссылки на соцсети; не выполняй действия за пользователя — подскажи, как сделать самому.
+- На темы, не связанные с работой Советов и платформой, вежливо отвечай, что помогаешь только с платформой и работой Советов.
+${platformGuide}`;}
+ const usage=(u,day)=>db.prepare('SELECT * FROM ai_usage WHERE user_id=? AND day=?').get(u.id,day)||{questions:0,tokens:0};
+ const handler=async(req,res,p,u)=>{
+  if(p!=='/api/sovetnik')return false;
+  if(!enabled)fail('Советник не подключён.',404);
+  if(req.method==='GET'){const today=localDay();json(res,{limit:dailyLimit,used:usage(u,today).questions});return true;}
+  if(req.method!=='POST')fail('Метод не поддерживается.',405);
+  const b=await body(req),history=Array.isArray(b.messages)?b.messages.slice(-8):[];
+  if(!history.length||history.some(m=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>2000)||history.at(-1).role!=='user')fail('Задайте вопрос.');
+  const day=localDay(),mine=usage(u,day),total=db.prepare('SELECT COALESCE(SUM(tokens),0) AS n FROM ai_usage WHERE day=?').get(day).n;
+  if(mine.questions>=dailyLimit)fail(`Сегодня вы задали ${dailyLimit} вопросов — это дневной лимит. Продолжим завтра!`,429);
+  if(total>=dailyTokens)fail('Советник на сегодня исчерпал общий лимит. Попробуйте завтра.',429);
+  const messages=[{role:'system',content:system(u)},...history.map(m=>({role:m.role,content:m.content.trim()}))];let tokens=0,answer='';
+  for(let step=0;step<5;step++){
+   const r=await complete(messages),msg=r.choices[0].message;tokens+=r.usage?.total_tokens||0;
+   if(msg.function_call&&tools[msg.function_call.name]){let args=msg.function_call.arguments;if(typeof args==='string'){try{args=JSON.parse(args);}catch{args={};}}let result;try{result=tools[msg.function_call.name].run(args||{},u);}catch(e){console.error(e);result={ошибка:'Не удалось получить данные.'};}
+    messages.push({role:'assistant',content:msg.content||'',function_call:msg.function_call,...(msg.functions_state_id?{functions_state_id:msg.functions_state_id}:{})},{role:'function',name:msg.function_call.name,content:JSON.stringify(result)});continue;}
+   answer=(msg.content||'').trim();break;
+  }
+  if(!answer)answer='Не получилось подготовить ответ. Попробуйте переформулировать вопрос.';
+  db.prepare('INSERT INTO ai_usage VALUES(?,?,1,?) ON CONFLICT(user_id,day) DO UPDATE SET questions=questions+1,tokens=tokens+excluded.tokens').run(u.id,day,tokens);
+  json(res,{answer,used:mine.questions+1,limit:dailyLimit});return true;
+ };
+ Object.assign(handler,{enabled,tools});return handler;
+}

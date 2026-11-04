@@ -46,5 +46,6 @@ export function materialsFeatures(h){
   fail('Метод не поддерживается.',405);
  };
  handler.backup=()=>({materials:db.prepare('SELECT * FROM materials').all()});
+ handler.visibleFor=u=>db.prepare('SELECT * FROM materials ORDER BY updated DESC').all().filter(m=>visible(u,m));
  return handler;
 }

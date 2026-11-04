@@ -16,7 +16,7 @@ git push --quiet origin HEAD
 echo "== Упаковка"
 TS=$(date +%Y%m%d-%H%M%S)
 ARCHIVE=$(mktemp -d)/sovety-app-$TS.tar.gz
-tar -czf "$ARCHIVE" server.mjs council-features.mjs people-features.mjs registration-features.mjs plan-features.mjs materials-features.mjs notify-features.mjs package.json public
+tar -czf "$ARCHIVE" server.mjs council-features.mjs people-features.mjs registration-features.mjs plan-features.mjs materials-features.mjs notify-features.mjs ai-features.mjs ai-guide.mjs package.json public $(test -d certs && echo certs)
 scp -q "$ARCHIVE" sovety:/tmp/sovety-app.tar.gz
 
 echo "== Установка на сервере"
