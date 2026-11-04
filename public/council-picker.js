@@ -24,5 +24,5 @@
  }
  function scan(node){if(node.nodeType!==1)return;if(node.matches('select[data-council-picker]'))enhance(node);for(const s of node.querySelectorAll('select[data-council-picker]'))enhance(s);}
  function init(){scan(document.body);new MutationObserver(records=>{for(const r of records)for(const n of r.addedNodes)scan(n);}).observe(document.body,{childList:true,subtree:true});}
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+ if(document.readyState==='complete')init();else document.addEventListener('DOMContentLoaded',init);
 })();

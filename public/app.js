@@ -100,6 +100,6 @@ document.addEventListener('submit',async e=>{e.preventDefault();const f=e.target
  }catch(err){if(error)error.textContent=err.message;else toast(err.message);}finally{submit.disabled=false;}});
 async function init(){try{const d=await api('/bootstrap');state.setupRequired=d.setupRequired;state.hosted=d.hosted;state.setupCodeRequired=d.setupCodeRequired;state.notificationsOn=!!d.notifications;state.sovetnikOn=!!d.sovetnik;state.user=d.user;state.demo=!d.user;await load();if(typeof pwaRoute==='function')pwaRoute();}catch(e){$('#app').innerHTML=`<div class="loading">Не удалось подключиться<span>${esc(e.message)} Обновите страницу после запуска сервера.</span></div>`;}}
 // Ждём все скрипты страницы (plan.js, people.js и др.), иначе первый рендер может опередить их загрузку.
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+if(document.readyState==='complete')init();else document.addEventListener('DOMContentLoaded',init);
 
 async function refreshCouncilIndex(){try{const d=await api('/items');state.councils=d.councils;if(state.page==='councils')$('#main').innerHTML=councils();}catch(e){toast(e.message);}}

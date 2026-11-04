@@ -24,5 +24,5 @@ function filterPersonCandidates(rows,query){const words=personSearchKey(query).s
  }
  function scan(node){if(node.nodeType===1&&node.matches('select[data-person-picker]'))enhance(node);for(const select of node.querySelectorAll?.('select[data-person-picker]')||[])enhance(select);}
  function init(){document.addEventListener('pointerdown',e=>{if(opened&&!opened.root.contains(e.target))opened.close();});scan(document);new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node.nodeType===1)scan(node);}).observe(document.body,{childList:true,subtree:true});}
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+ if(document.readyState==='complete')init();else document.addEventListener('DOMContentLoaded',init);
 })();
