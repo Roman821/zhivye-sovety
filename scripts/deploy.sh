@@ -36,4 +36,5 @@ systemctl restart sovety
 exit 1
 EOF
 
-curl -fsS -o /dev/null -w "== Публичный адрес: HTTP %{http_code}\n" https://academic-sweet-trail.ihchost.rocks/api/bootstrap
+CODE=$(curl -fsS -o /dev/null -w "%{http_code}" https://academic-sweet-trail.ihchost.rocks/api/bootstrap)
+echo "== Публичный адрес: HTTP $CODE"
