@@ -2,3 +2,4 @@ data/
 node_modules/
 *.log
 backups/
+.claude/settings.local.json
