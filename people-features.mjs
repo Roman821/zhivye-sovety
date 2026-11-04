@@ -27,7 +27,7 @@ export function peopleFeatures(h){
   const meetings=db.prepare('SELECT * FROM council_meetings ORDER BY date DESC,updated DESC').all().map(m=>({...m,attendance:JSON.parse(m.attendance),related_item_ids:JSON.parse(m.related_item_ids),can_edit:canEdit(u,m)})).filter(m=>m.can_edit||canView(u,m.council)||m.attendance.some(a=>ids.has(a.person_id)));
   const latest=new Map();for(const r of db.prepare("SELECT * FROM council_reports WHERE status='submitted' AND deleted_at='' ORDER BY updated").all())latest.set(r.council+'|'+r.year,r);
   const appearances=[];for(const r of latest.values())for(const [i,a] of JSON.parse(r.activities).entries()){const participant_ids=(a.participant_ids||[]).filter(id=>ids.has(id));if(participant_ids.length)appearances.push({key:r.id+':'+i,report_id:r.id,name:a.name,date:a.date,level:a.level,council:r.council,participant_ids});}
-  return {people,meetings,appearances,directory:db.prepare('SELECT * FROM council_directory ORDER BY name').all(),items:db.prepare('SELECT * FROM items ORDER BY updated DESC').all().filter(i=>canView(u,i.council)||canEdit(u,i)).map(i=>({...i,assignee_ids:JSON.parse(i.assignee_ids)})),manage_all:manager(u)};
+  return {people,meetings,appearances,directory:db.prepare('SELECT * FROM council_directory ORDER BY name').all(),items:db.prepare('SELECT * FROM items ORDER BY updated DESC').all().filter(i=>canView(u,i.council)||canEdit(u,i)).map(i=>({...i,assignee_ids:JSON.parse(i.assignee_ids),audience_ids:JSON.parse(i.audience_ids||'[]')})),manage_all:manager(u)};
  }
  const validDate=d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&!isNaN(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d;
  const handler=async(req,res,p,u)=>{
