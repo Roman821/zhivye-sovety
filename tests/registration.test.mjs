@@ -1,0 +1,56 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {spawn} from 'node:child_process';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,dirname} from 'node:path';import {fileURLToPath} from 'node:url';
+const root=dirname(dirname(fileURLToPath(import.meta.url)));
+test('Все Советы, планирование, регистрация без кода и проверяемое объединение',{timeout:30000},async()=>{
+ const data=mkdtempSync(join(tmpdir(),'sovety-register-'));let child;
+ try{
+ async function start(){ child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:'0',SOVETY_DATA_DIR:data},stdio:['ignore','pipe','pipe']});return await new Promise((resolve,reject)=>{let out='';const t=setTimeout(()=>reject(new Error(out)),8000);child.stdout.on('data',c=>{out+=c;const m=out.match(/http:\/\/127.0.0.1:\d+/);if(m){clearTimeout(t);resolve(m[0]);}});child.stderr.on('data',c=>out+=c);child.once('exit',()=>{clearTimeout(t);reject(new Error(out));});});
+}
+ let url=await start();
+ async function req(p,method='GET',value,cookie){const r=await fetch(url+'/api'+p,{method,headers:{...(value?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})},body:value?JSON.stringify(value):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};}
+ const password='main-password-123',setup=await req('/setup','POST',{name:'Координатор',email:'owner@example.test',password,council:'Региональный Совет'}),owner=setup.cookie;
+ assert.equal((await req('/council-directory','POST',{name:'Совет Ширинского района',level:'local'},owner)).status,200);
+ assert.ok((await req('/items','GET',undefined,owner)).data.councils.includes('Совет Ширинского района'));
+ await req('/council-directory','POST',{name:'Школьный Совет',level:'primary'},owner);assert.ok((await req('/items','GET',undefined,owner)).data.councils.includes('Школьный Совет'));
+ const options=await req('/registration-options');assert.ok(options.data.councils.some(c=>c.name==='Совет Ширинского района'));assert.ok(options.data.councils.every(c=>Object.keys(c).sort().join(',')==='level,name'));
+ const fresh=await req('/register','POST',{name:'Петров Пётр Петрович',email:'fresh@example.test',password,council:'Совет Ширинского района',roles:['admin','specialist']});assert.equal(fresh.status,201);assert.equal(fresh.data.user.role,'member');assert.equal(fresh.data.user.manage_all,false);assert.equal(fresh.data.profile_pending,false);
+ const fperson=(await req('/people-data','GET',undefined,owner)).data.people.find(p=>p.user_id===fresh.data.user.id);assert.ok(fperson);
+ assert.equal((await req('/register','POST',{name:'петров  петр ПЕТРОВИЧ',email:'duplicate@example.test',password,council:'Совет Ширинского района'})).status,409);
+ assert.equal((await req('/register','POST',{name:'Другой Человек',email:'fresh@example.test',password,council:'Совет Ширинского района'})).status,409);
+ assert.equal((await req('/members','GET',undefined,fresh.cookie)).status,403);
+ const invited=await req('/invites','POST',{name:'Иванов Иван Иванович',council:'Совет Ширинского района',roles:['specialist']},owner);assert.equal(invited.status,201);
+ const existing=(await req('/council-data','GET',undefined,owner)).data.roster.find(p=>p.name==='Иванов Иван Иванович');assert.ok(existing);
+ await req('/council-roster','POST',{id:existing.id,name:existing.name,council:existing.council,positions:existing.positions,phone:'+7 900 111-11-11',bio:'Существующие сведения'},owner);
+ const self=await req('/register','POST',{name:'  ИВАНОВ   Иван Иванович ',email:'self@example.test',password,council:'Совет Ширинского района'});assert.equal(self.status,201);assert.equal(self.data.profile_pending,true);assert.equal(self.data.user.manage_all,false);
+ let roster=(await req('/council-data','GET',undefined,owner)).data.roster;assert.equal(roster.filter(p=>p.name==='Иванов Иван Иванович').length,1);assert.ok(!roster.find(p=>p.id===existing.id).user_id);
+ const privateRoster=(await req('/council-data','GET',undefined,self.cookie)).data.roster.find(p=>p.id===existing.id);assert.equal(privateRoster.phone,undefined);assert.equal(privateRoster.can_edit,false);
+ assert.equal((await req('/council-roster','POST',{id:existing.id,name:'Подмена',council:existing.council,positions:['Участник']},self.cookie)).status,403);
+ assert.equal((await req('/council-roster','POST',{name:existing.name,council:existing.council,positions:['Участник']},self.cookie)).status,403);
+ const review=(await req('/identity-review','GET',undefined,owner)).data,claim=review.claims.find(c=>c.user_id===self.data.user.id);assert.ok(claim);
+ assert.equal((await req('/identity-claim','POST',{claim_id:claim.id,action:'link',roles:['chair']},fresh.cookie)).status,403);
+ assert.equal((await req('/identity-claim','POST',{claim_id:claim.id,action:'link',roles:['chair']},owner)).status,200);
+ const linked=(await req('/people-data','GET',undefined,owner)).data.people.find(p=>p.user_id===self.data.user.id);assert.equal(linked.id,existing.id);assert.equal(linked.phone,'+7 900 111-11-11');assert.equal(linked.bio,'Существующие сведения');assert.equal((await req('/bootstrap','GET',undefined,self.cookie)).data.user.manage_all,false);
+ assert.equal((await req('/invites','POST',{name:'иванов Иван Иванович',council:existing.council,roles:['member']},owner)).status,409);
+ const plan={title:'Плановая ВКС Совета',kind:'vks',description:'Обсудить общие планы',council:'Совет Ширинского района',deadline:'2026-11-15',start_time:'18:30',meeting_level:'local',location:'Онлайн',call_url:'https://example.test/call',assignee_ids:[fperson.id]};
+ const scheduled=await req('/items','POST',plan,owner);assert.equal(scheduled.status,201);assert.equal(scheduled.data.item.start_time,'18:30');
+ for(const bad of [{deadline:''},{start_time:'25:30'},{meeting_level:'wrong'},{call_url:'javascript:alert(1)'}])assert.equal((await req('/items','POST',{...plan,...bad},owner)).status,400);
+ const meeting=await req('/meetings','POST',{council:plan.council,title:plan.title,date:plan.deadline,level:'local',format:'vks',attendance:[{person_id:fperson.id,status:'present'}],guests:0,decisions:'Утвердили план',related_item_ids:[scheduled.data.item.id]},owner);assert.equal(meeting.status,201);assert.equal((await req('/items/'+scheduled.data.item.id,'GET',undefined,owner)).data.item.status,'done');
+ // A deliberately confirmed homonym invitation can represent an existing duplicate for staff reconciliation.
+ const duplicateInvite=await req('/invites','POST',{name:'Петров Пётр Петрович',council:plan.council,roles:['member'],allow_homonym:true},owner);assert.equal(duplicateInvite.status,201);
+ const duplicate=await req('/register','POST',{name:'Петров Пётр Петрович',email:'old-duplicate@example.test',password:'different-password-123',code:duplicateInvite.data.code});assert.equal(duplicate.status,201);
+ const dp=(await req('/people-data','GET',undefined,owner)).data.people.find(p=>p.user_id===duplicate.data.user.id);assert.ok(dp);assert.notEqual(dp.id,fperson.id);assert.equal((await req('/council-memberships','POST',{person_id:dp.id,council:'Школьный Совет',positions:['Делегат в местный Совет Первых']},owner)).status,200);
+ const dupTask=await req('/items','POST',{title:'Назначение старого аккаунта',kind:'task',description:'Сохранить при объединении',council:plan.council,assignee_ids:[dp.id],author_person_id:dp.id},duplicate.cookie);assert.equal(dupTask.status,201);
+ await req('/council-roster','POST',{id:dp.id,name:dp.name,council:dp.council,positions:dp.positions,phone:'+7 900 222-22-22',bio:'Описание из старой карточки'},owner);
+ await req('/meetings','POST',{council:plan.council,title:'Посещаемость дублей',date:'2026-10-30',level:'local',format:'in_person',attendance:[{person_id:dp.id,status:'present'},{person_id:fperson.id,status:'absent'}],guests:0,decisions:'Сохраняем историю',related_item_ids:[]},owner);
+ const report=(await req('/council-reports','POST',{council:plan.council,year:2026},owner)).data.report;
+ await req('/council-reports/'+report.id,'PUT',{version:report.version,status:'submitted',local_practice:'Практика района',primary_practice:'Практика школы',activities:[{name:'Участие дублей',date:'2026-10-29',level:'local',department:plan.council,location:'Дом культуры',organizers:'Совет',council_role:'organizer',contribution:'Организация',initiated:true,participants:5,participant_ids:[dp.id,fperson.id],description:'Встреча',result:'Обмен опытом',post_url:''}]},owner);
+
+ assert.equal((await req('/identity-merge','POST',{source_id:duplicate.data.user.id,target_id:fresh.data.user.id,confirm:true},fresh.cookie)).status,403);
+ assert.equal((await req('/identity-merge','POST',{source_id:duplicate.data.user.id,target_id:fresh.data.user.id,confirm:true},owner)).status,200);
+ const mergedItem=(await req('/items/'+dupTask.data.item.id,'GET',undefined,owner)).data.item;assert.deepEqual(mergedItem.assignee_ids,[fperson.id]);assert.equal(mergedItem.author_person_id,fperson.id);assert.equal(mergedItem.created_by,fresh.data.user.id);
+ const preserved=(await req('/people-data','GET',undefined,owner)).data;assert.equal(preserved.people.find(p=>p.id===fperson.id).phone,'+7 900 222-22-22');assert.equal(preserved.people.find(p=>p.id===fperson.id).bio,'Описание из старой карточки');assert.ok(preserved.people.find(p=>p.id===fperson.id).memberships.some(m=>m.council==='Школьный Совет'&&m.positions.includes('Делегат в местный Совет Первых')));const att=preserved.meetings.find(m=>m.title==='Посещаемость дублей').attendance;assert.deepEqual(att,[{person_id:fperson.id,status:'present'}]);assert.deepEqual(preserved.appearances.find(a=>a.name==='Участие дублей').participant_ids,[fperson.id]);
+ const accounts=(await req('/members','GET',undefined,owner)).data.members;assert.ok(!accounts.some(a=>a.id===duplicate.data.user.id));assert.equal((await req('/bootstrap','GET',undefined,duplicate.cookie)).data.user,null);
+ assert.equal((await req('/login','POST',{email:'old-duplicate@example.test',password:'different-password-123'})).status,401);const alias=await req('/login','POST',{email:'old-duplicate@example.test',password});assert.equal(alias.status,200);assert.equal(alias.data.user.id,fresh.data.user.id);
+ assert.equal((await req('/identity-merge','POST',{source_id:fresh.data.user.id,target_id:setup.data.user.id,confirm:true},owner)).status,400);
+ child.kill();await new Promise(resolve=>child.once('exit',resolve));url=await start();const resumedOwner=(await req('/login','POST',{email:'owner@example.test',password})).cookie;const afterRestart=(await req('/people-data','GET',undefined,resumedOwner)).data;assert.equal(afterRestart.people.filter(p=>!p.archived&&p.name==='Петров Пётр Петрович').length,1);assert.equal(afterRestart.people.find(p=>p.id===fperson.id).phone,'+7 900 222-22-22');assert.equal(afterRestart.people.find(p=>p.id===dp.id).archived,1);assert.equal(afterRestart.people.find(p=>p.id===fperson.id).memberships.length,2);assert.equal((await req('/login','POST',{email:'old-duplicate@example.test',password})).data.user.id,fresh.data.user.id);
+ }finally{if(child?.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}rmSync(data,{recursive:true,force:true});}
+});
