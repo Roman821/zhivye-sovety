@@ -1,5 +1,5 @@
 function cfSelectedReports(){return councilData.reports.filter(r=>(!cfFilter.council||r.council===cfFilter.council)&&(!cfFilter.year||String(r.year)===cfFilter.year)&&(!cfFilter.status||r.status===cfFilter.status));}
-function cfWorkbook(){if(typeof ExcelJS==='undefined')throw new Error('Библиотека Excel ещё загружается. Повторите выгрузку.');const w=new ExcelJS.Workbook();w.creator='Живые Советы';w.created=new Date();w.modified=new Date();return w;}
+function cfWorkbook(){if(typeof ExcelJS==='undefined')throw new Error('Библиотека Excel ещё загружается. Повторите выгрузку.');const w=new ExcelJS.Workbook();w.creator='Советы Первых 19';w.created=new Date();w.modified=new Date();return w;}
 function cfSheet(w,name,title,description,headers,widths,rows){
  const s=w.addWorksheet(name,{views:[{state:'frozen',ySplit:4}]});s.properties.defaultRowHeight=22;s.columns=widths.map(width=>({width}));
  s.mergeCells(1,1,1,headers.length);s.getCell(1,1).value=title;s.getCell(1,1).font={name:'Calibri',size:18,bold:true,color:{argb:'FFE63730'}};s.getRow(1).height=32;

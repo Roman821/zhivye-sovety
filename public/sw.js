@@ -1,6 +1,6 @@
-// Service Worker «Живых Советов»: установка как приложения, просмотр без интернета, push-уведомления.
-const SHELL='sovety-shell-v1',API='sovety-api';
-const shell=['/','/style.css','/app.js','/council-features.js','/exceljs.min.js','/exports.js','/people.js','/person-picker.js','/registration.js','/plan.js','/efficiency.js','/materials.js','/council-picker.js','/pwa.js','/first-mark.svg','/favicon.svg','/icon-192.png','/manifest.webmanifest'];
+// Service Worker платформы «Советы Первых 19»: установка как приложения, просмотр без интернета, push-уведомления.
+const SHELL='sovety-shell-v2',API='sovety-api';
+const shell=['/','/style.css','/app.js','/council-features.js','/exceljs.min.js','/exports.js','/people.js','/person-picker.js','/registration.js','/plan.js','/efficiency.js','/materials.js','/council-picker.js','/pwa.js','/first-logo-white.png','/favicon.png','/icon-192.png','/manifest.webmanifest'];
 // Только эти ответы сервера сохраняются для просмотра без связи. Файлы материалов и фото не кешируются.
 const cachedApi=['/api/bootstrap','/api/items','/api/people-data','/api/personal','/api/council-data','/api/materials','/api/identity-status','/api/notifications'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(SHELL).then(c=>c.addAll(shell)).then(()=>self.skipWaiting()));});
@@ -17,7 +17,7 @@ self.addEventListener('fetch',e=>{
 });
 self.addEventListener('push',e=>{e.waitUntil((async()=>{
  let list=[];try{const sub=await self.registration.pushManager.getSubscription();const r=await fetch('/api/notifications/pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub?.endpoint||''})});if(r.ok)list=(await r.json()).notifications;}catch{}
- if(!list.length)list=[{id:'sovety',title:'Живые Советы',body:'Есть новые уведомления.',url:'/'}];
+ if(!list.length)list=[{id:'sovety',title:'Советы Первых 19',body:'Есть новые уведомления.',url:'/'}];
  await Promise.all(list.slice(0,5).map(n=>self.registration.showNotification(n.title,{body:n.body,icon:'/icon-192.png',badge:'/icon-192.png',tag:n.id,lang:'ru',data:{url:n.url||'/'}})));
 })());});
 self.addEventListener('notificationclick',e=>{e.notification.close();const url=new URL(e.notification.data?.url||'/',self.location.origin).href;e.waitUntil((async()=>{

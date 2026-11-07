@@ -51,7 +51,7 @@ export function aiFeatures(h){
    run(a,u){const list=materialsVisible(u).filter(m=>(!a.category||m.category===a.category)&&(!a.query||matches(m.title+' '+m.description,a.query)));return {найдено:list.length,материалы:list.slice(0,20).map(m=>({название:m.title,описание:m.description.slice(0,300),файл:m.file_name||'',ссылка:'/#page=materials'}))};}}
  };
  const functions=Object.entries(tools).map(([name,t])=>({name,description:t.description,parameters:t.parameters}));
- function system(u){const roles=JSON.parse(u.roles||'[]');return `Ты «Советник» — помощник платформы «Живые Советы · Хакасия» для Советов Первых. Отвечай по-русски, коротко, дружелюбно и по делу.
+ function system(u){const roles=JSON.parse(u.roles||'[]');return `Ты «Советник» — помощник платформы «Советы Первых 19» (Хакасия) для Советов Первых. Отвечай по-русски, коротко, дружелюбно и по делу.
 Сегодня ${periods().today} (${periods().weekday}, время Красноярска). Эта неделя: с ${periods().weekFrom} по ${periods().weekTo}. Следующая неделя: с ${periods().nextFrom} по ${periods().nextTo}. Этот месяц: с ${periods().monthFrom} по ${periods().monthTo}. Спрашивает: ${u.name}, Совет: ${u.council}, должности: ${(roles.length?roles:[u.role]).map(r=>roleLabels?.[r]||r).join(', ')}.
 Правила:
 - Вопросы «как сделать» отвечай по инструкции ниже, называй раздел и кнопки.
