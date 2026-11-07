@@ -1,1 +1,1 @@
-{"name":"zhivye-sovety","version":"1.0.0","private":true,"license":"SEE LICENSE IN LICENSE","author":"Роман Мухменов","type":"module","scripts":{"start":"node server.mjs","test":"node --test"},"engines":{"node":">=24"}}
+{"name":"zhivye-sovety","version":"1.0.0","private":true,"license":"SEE LICENSE IN LICENSE","author":"Роман Мухменов","type":"module","scripts":{"start":"node server.mjs","dev":"node server.mjs","test":"node --test"},"engines":{"node":">=24"}}
