@@ -28,7 +28,18 @@ test('Полные права, приглашения, назначения, з�
 
  const profile={id:person.id,name:person.name,council:person.council,positions:['Участник'],birth_year:2008,education:'school',institution:'Школа',study_year:'11 класс',phone:'+7 900 000-00-00',vk:'https://vk.com/example',bio:'Организует встречи',photo:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='};
  assert.equal((await req('/council-roster','POST',profile,specialist.cookie)).status,200);
- assert.equal((await fetch(url+'/api/people/'+person.id+'/photo')).status,401);assert.equal((await fetch(url+'/api/people/'+person.id+'/photo',{headers:{Cookie:specialist.cookie}})).status,200);
+ assert.equal((await fetch(url+'/api/people/'+person.id+'/photo')).status,401);
+ const photoDownload=await fetch(url+'/api/people/'+person.id+'/photo?download=1',{headers:{Cookie:specialist.cookie}});assert.equal(photoDownload.status,200);assert.match(photoDownload.headers.get('content-disposition'),/^attachment;/);assert.match(photoDownload.headers.get('content-disposition'),/filename\*=UTF-8''/);assert.ok((await photoDownload.arrayBuffer()).byteLength>8);
+ async function uploadPortfolio(file,name,cookie){const r=await fetch(url+'/api/people/'+person.id+'/portfolio',{method:'PUT',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(name),Cookie:cookie},body:file});return {status:r.status,data:await r.json()};}
+ const pdf=Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n');
+ assert.equal((await uploadPortfolio(pdf,'Достижения участника.pdf',curator.cookie)).status,403);
+ assert.equal((await uploadPortfolio(Buffer.from('not a pdf'),'Обман.pdf',specialist.cookie)).status,400);
+ const tooLarge=Buffer.alloc(50*1024*1024+1);tooLarge.write('%PDF-');assert.equal((await uploadPortfolio(tooLarge,'Слишком большой.pdf',specialist.cookie)).status,413);
+ assert.equal((await uploadPortfolio(pdf,'Достижения участника.pdf',specialist.cookie)).status,200);
+ const withPortfolio=(await req('/people-data','GET',undefined,ordinary.cookie)).data.people.find(p=>p.id===person.id);assert.equal(withPortfolio.has_portfolio,true);assert.equal(withPortfolio.portfolio_name,'Достижения участника.pdf');assert.equal(withPortfolio.portfolio_size,pdf.length);
+ const portfolioDownload=await fetch(url+'/api/people/'+person.id+'/portfolio',{headers:{Cookie:ordinary.cookie}});assert.equal(portfolioDownload.status,200);assert.equal(portfolioDownload.headers.get('content-type'),'application/pdf');assert.match(portfolioDownload.headers.get('content-disposition'),/^attachment;/);assert.deepEqual(Buffer.from(await portfolioDownload.arrayBuffer()),pdf);
+ assert.equal((await req('/people/'+person.id+'/portfolio/remove','POST',{},curator.cookie)).status,403);
+ assert.equal((await req('/people/'+person.id+'/portfolio/remove','POST',{},specialist.cookie)).status,200);assert.equal((await req('/people-data','GET',undefined,ordinary.cookie)).data.people.find(p=>p.id===person.id).has_portfolio,false);assert.equal((await fetch(url+'/api/people/'+person.id+'/portfolio',{headers:{Cookie:ordinary.cookie}})).status,404);
  assert.equal((await req('/council-roster','POST',{...profile,photo:'data:image/svg+xml;base64,AAAA',name:'Не должно сохраниться'},owner)).status,400);
  assert.equal((await req('/people-data','GET',undefined,owner)).data.people.find(p=>p.id===person.id).name,person.name);
  const ordinaryData=(await req('/people-data','GET',undefined,ordinary.cookie)).data;assert.ok(ordinaryData.people.every(p=>p.council===ordinary.data.user.council));
