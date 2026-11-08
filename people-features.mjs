@@ -55,7 +55,8 @@ export function peopleFeatures(h){
    const person=db.prepare('SELECT * FROM council_roster WHERE id=?').get(portfolio[1]);if(!person)fail('Участник не найден.',404);
    if(!portfolio[2]&&req.method==='GET'){
     if(!canViewPerson(u,person)||!person.portfolio_name)fail('Портфолио недоступно.',404);const file=db.prepare('SELECT data FROM portfolio_files WHERE person_id=?').get(person.id);if(!file)fail('Файл портфолио не найден.',404);
-    res.writeHead(200,{'Content-Type':person.portfolio_type||'application/octet-stream','Content-Length':file.data.length,'Content-Disposition':`attachment; filename="portfolio.${person.portfolio_name.split('.').pop()}"; filename*=UTF-8''${encodeURIComponent(person.portfolio_name)}`,'Cache-Control':'private, no-store'});res.end(file.data);return true;
+    const preview=new URL(req.url,'http://localhost').searchParams.get('view')==='1'&&['application/pdf','image/jpeg','image/png'].includes(person.portfolio_type),disposition=preview?'inline':'attachment';
+   res.writeHead(200,{'Content-Type':person.portfolio_type||'application/octet-stream','Content-Length':file.data.length,'Content-Disposition':`${disposition}; filename="portfolio.${person.portfolio_name.split('.').pop()}"; filename*=UTF-8''${encodeURIComponent(person.portfolio_name)}`,'Cache-Control':'private, no-store'});res.end(file.data);return true;
    }
    if(!canEdit(u,person))fail('Изменять портфолио может участник или управляющий его Совета.',403);
    if(!portfolio[2]&&req.method==='PUT'){
