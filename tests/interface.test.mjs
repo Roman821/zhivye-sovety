@@ -43,3 +43,17 @@ test('Личный кабинет показывает данные и порт�
  assert.ok(!a.run('profileFields({})').includes('portfolio_file'));});
 
 test('Личный кабинет открывается через нижний профиль без отдельного пункта меню',()=>{const a=app();a.run("state.demo=false;state.user={id:'u1',name:'Анна',email:'anna@example.test',council:'Совет',role:'member'};state.peopleData={people:[],directory:[],items:[],meetings:[],appearances:[]};render()");const html=a.nodes['#app'].innerHTML,navigation=html.match(/<nav>([\s\S]*?)<\/nav>/)?.[1]||'';assert.ok(!navigation.includes('data-page="account"'));assert.ok(html.includes('class="profile-account '));assert.ok(html.includes('data-page="account"'));assert.ok(html.includes('aria-label="Открыть личный кабинет"'));assert.ok(html.includes('data-action="logout"'));});
+
+test('Новая карточка сохраняет выбранный Совет и предлагает должность участника',()=>{const a=app();a.run(readFileSync(new URL('../public/council-features.js',import.meta.url),'utf8'));a.run(readFileSync(new URL('../public/people.js',import.meta.url),'utf8'));a.run(`state.demo=false;state.user={id:'admin',name:'Координатор',council:'Региональный Совет Первых',role:'admin',manage_all:true,manage_scope:null,permissions:[]};state.peopleData={people:[],directory:[{name:'Региональный Совет Первых',level:'regional'},{name:'Совет Первых г. Черногорска',level:'local'}]};councilData={names:['Региональный Совет Первых','Совет Первых г. Черногорска'],directory:state.peopleData.directory,roster:[]};cfPerson('',true,'Совет Первых г. Черногорска');`);
+ const html=a.nodes['#modal'].innerHTML;assert.ok(html.includes('value="Совет Первых г. Черногорска" selected'));assert.ok(html.includes('value="Участник" checked'));assert.ok(html.includes('Оригинал сохраняется без уменьшения'));
+ a.run("membershipForm('', 'Совет Первых г. Черногорска')");assert.ok(a.nodes['#modal'].innerHTML.includes('value="Совет Первых г. Черногорска" selected'));
+ a.run("state.page='roster';renderCouncilFeatures()");assert.ok(a.nodes['#council-features'].innerHTML.includes('data-council="Совет Первых г. Черногорска"'));
+});
+
+test('Кнопка добавления в Совете не переключает страницу на общий обзор',async()=>{
+ let click;const context=vm.createContext({console,setTimeout,clearTimeout,URL,Intl,Date,fetch:()=>new Promise(()=>{}),window:{scrollTo(){}},document:{addEventListener(type,handler){if(type==='click')click=handler;}}});
+ vm.runInContext(readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),context);
+ vm.runInContext("state.page='roster';state.council=''",context);
+ await click({target:{closest:()=>({dataset:{council:'Совет Первых г. Черногорска',cf:'person'}})}});
+ assert.equal(vm.runInContext('state.page',context),'roster');
+});

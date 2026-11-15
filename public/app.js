@@ -85,7 +85,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button,[da
  if(b.dataset.page){state.page=b.dataset.page;state.query='';state.council='';state.status='';render();window.scrollTo(0,0);return;}
  if(b.dataset.item)return detail(b.dataset.item);
  if(b.dataset.view){state.view=b.dataset.view;render();return;}
- if(b.dataset.council){state.page='overview';state.council=b.dataset.council;render();return;}
+ if(b.dataset.council&&!b.dataset.cf&&!b.dataset.pf){state.page='overview';state.council=b.dataset.council;render();return;}
  if(b.dataset.stat){state.query='';state.council='';state.status='';if(b.dataset.stat==='initiative')state.page='initiative';else if(b.dataset.stat==='deadline'){state.page='overview';state.status='overdue';}else state.status=b.dataset.stat;render();return;}
  if(b.dataset.access){await api('/members/access','POST',{id:b.dataset.access,active:b.dataset.active==='1'});toast('Доступ участника обновлён.');return loadMembers();}
  const a=b.dataset.action;

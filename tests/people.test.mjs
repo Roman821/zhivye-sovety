@@ -13,6 +13,9 @@ test('Полные права, приглашения, назначения, з�
  assert.equal((await req('/members','GET',undefined,curator.cookie)).status,200);assert.equal((await req('/members','GET',undefined,specialist.cookie)).status,200);
  assert.equal((await req('/members/access','POST',{id:setup.data.user.id,active:false},specialist.cookie)).status,400);
  const pd=(await req('/people-data','GET',undefined,owner)).data,person=pd.people.find(p=>p.user_id===ordinary.data.user.id);assert.ok(person);assert.equal(pd.people.filter(p=>p.user_id===ordinary.data.user.id).length,1);assert.ok(pd.directory.some(c=>c.name==='Совет В'));
+ assert.equal((await req('/council-directory','POST',{name:'Совет Первых г. Черногорска',level:'local',parent:'Региональный Совет'},owner)).status,200);
+ const chernogorskPerson=await req('/council-roster','POST',{council:'Совет Первых г. Черногорска',name:'Тестовая Активистка',positions:['Участник']},owner);assert.equal(chernogorskPerson.status,200);assert.ok(chernogorskPerson.data.id);
+ const chernogorskRoster=(await req('/council-data','GET',undefined,owner)).data.roster.filter(p=>p.council==='Совет Первых г. Черногорска');assert.equal(chernogorskRoster.length,1);assert.equal(chernogorskRoster[0].name,'Тестовая Активистка');assert.deepEqual(chernogorskRoster[0].positions,['Участник']);
  const membership={person_id:person.id,council:'Региональный Совет',positions:['Делегат в региональный Совет Первых']};
  assert.equal((await req('/council-memberships','POST',membership,ordinary.cookie)).status,403);
  assert.equal((await req('/council-memberships','POST',membership,curator.cookie)).status,403);
@@ -30,6 +33,16 @@ test('Полные права, приглашения, назначения, з�
  assert.equal((await req('/council-roster','POST',profile,specialist.cookie)).status,200);
  assert.equal((await fetch(url+'/api/people/'+person.id+'/photo')).status,401);
  const photoDownload=await fetch(url+'/api/people/'+person.id+'/photo?download=1',{headers:{Cookie:specialist.cookie}});assert.equal(photoDownload.status,200);assert.match(photoDownload.headers.get('content-disposition'),/^attachment;/);assert.match(photoDownload.headers.get('content-disposition'),/filename\*=UTF-8''/);assert.ok((await photoDownload.arrayBuffer()).byteLength>8);
+ async function uploadPhoto(file,name,cookie){const r=await fetch(url+'/api/people/'+person.id+'/photo',{method:'PUT',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(name),Cookie:cookie},body:file});return {status:r.status,data:await r.json()};}
+ const largePhoto=Buffer.concat([Buffer.from(profile.photo.split(',')[1],'base64'),Buffer.alloc(13*1024*1024,7)]);assert.ok(largePhoto.length>13*1024*1024);
+ assert.equal((await uploadPhoto(largePhoto,'Исходная фотография.png',curator.cookie)).status,403);
+ assert.equal((await uploadPhoto(Buffer.from('not an image'),'Обман.png',specialist.cookie)).status,400);
+ const uploadedPhoto=await uploadPhoto(largePhoto,'Исходная фотография.png',specialist.cookie);assert.equal(uploadedPhoto.status,200);assert.equal(uploadedPhoto.data.size,largePhoto.length);
+ const originalPhoto=await fetch(url+'/api/people/'+person.id+'/photo?download=1',{headers:{Cookie:specialist.cookie}});assert.equal(originalPhoto.status,200);assert.equal(originalPhoto.headers.get('content-type'),'image/png');assert.equal(Number(originalPhoto.headers.get('content-length')),largePhoto.length);assert.match(originalPhoto.headers.get('content-disposition'),/filename\*=UTF-8''/);assert.deepEqual(Buffer.from(await originalPhoto.arrayBuffer()),largePhoto);
+ const withoutPhoto={...profile};delete withoutPhoto.photo;assert.equal((await req('/council-roster','POST',withoutPhoto,specialist.cookie)).status,200);
+ const storedPerson=(await req('/people-data','GET',undefined,specialist.cookie)).data.people.find(p=>p.id===person.id);assert.equal(storedPerson.has_photo,true);assert.equal(storedPerson.photo_size,largePhoto.length);assert.equal(storedPerson.photo_name,'Исходная фотография.png');
+ const afterProfileUpdate=await fetch(url+'/api/people/'+person.id+'/photo',{headers:{Cookie:specialist.cookie}});assert.deepEqual(Buffer.from(await afterProfileUpdate.arrayBuffer()),largePhoto);
+ assert.equal((await req('/people/'+person.id+'/photo/remove','POST',{},curator.cookie)).status,403);assert.equal((await req('/people/'+person.id+'/photo/remove','POST',{},specialist.cookie)).status,200);assert.equal((await req('/people-data','GET',undefined,specialist.cookie)).data.people.find(p=>p.id===person.id).has_photo,false);assert.equal((await fetch(url+'/api/people/'+person.id+'/photo',{headers:{Cookie:specialist.cookie}})).status,404);
  async function uploadPortfolio(file,name,cookie){const r=await fetch(url+'/api/people/'+person.id+'/portfolio',{method:'PUT',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(name),Cookie:cookie},body:file});return {status:r.status,data:await r.json()};}
  const pdf=Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n');
  assert.equal((await uploadPortfolio(pdf,'Достижения участника.pdf',curator.cookie)).status,403);
