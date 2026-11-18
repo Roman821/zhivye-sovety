@@ -5,6 +5,23 @@ import {readFileSync} from 'node:fs';
 const source=['app.js','plan.js','efficiency.js','sovetnik.js'].map(f=>readFileSync(new URL('../public/'+f,import.meta.url),'utf8')).join('\n');
 function app(){const nodes={};const context=vm.createContext({console,setTimeout,clearTimeout,URL,Intl,Date,fetch:()=>new Promise(()=>{}),window:{scrollTo(){}},document:{querySelector:s=>nodes[s]||(nodes[s]={innerHTML:'',textContent:'',classList:{add(){},remove(){}},showModal(){},close(){}}),addEventListener(){}}});vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),nodes};}
 test('Поиск и сочетание фильтров работают независимо от вида списка',()=>{const a=app();a.run('state.items=demoItems;state.demo=true');assert.equal(a.run('filtered().length'),6);a.run("state.query='наставничества'");assert.equal(a.run('filtered()[0].title'),'Совет — Совету');a.run("state.query='';state.council='Ширинский район';state.status='progress'");assert.equal(a.run('filtered().length'),2);a.run("state.page='initiative'");assert.equal(a.run('filtered().length'),1);a.run("state.view='list';render()");assert.ok(a.nodes['#app'].innerHTML.includes('class="rows"'));});
+test('Форма ВКС показывает состав и гостей из списка для посещаемости',()=>{
+ const a=app();
+ a.run(readFileSync(new URL('../public/council-features.js',import.meta.url),'utf8'));
+ a.run(readFileSync(new URL('../public/people.js',import.meta.url),'utf8'));
+ a.run(`state.user={council:'Региональный Совет'};state.peopleData={
+  directory:[{name:'Региональный Совет',level:'regional'}],
+  people:[{id:'secretary',name:'Секретарь',council:'Региональный Совет'}],
+  meeting_people:[
+   {id:'delegate',name:'Делегат',council:'Местный Совет',memberships:[{council:'Региональный Совет'}]},
+   {id:'guest',name:'Гость',council:'Местный Совет'}
+  ]
+ };state.items=[];meetingCount=()=>{};meetingForm({format:'vks',attendance:[{person_id:'guest',status:'present'}]})`);
+ const html=a.nodes['#modal'].innerHTML;
+ assert.match(html,/<option value="guest" selected>Гость/);
+ assert.match(html,/Делегат<small>Местный Совет<\/small><\/span><select data-attendee="delegate"/);
+ assert.match(html,/data-attendee="guest"[^>]*>[\s\S]*?<option value="present" selected>/);
+});
 test('Просроченные записи не включают завершённые и архивные',()=>{const a=app();a.run("state.items=[{deadline:'2000-01-01',status:'progress',updated:'1'},{deadline:'2000-01-01',status:'done',updated:'1'},{deadline:'2000-01-01',status:'archive',updated:'1'}];state.status='overdue'");assert.equal(a.run('filtered().length'),1);});
 test('Пользовательский текст экранируется в карточках и формах',()=>{const a=app();const html=a.run("card({...demoItems[0],title:'<img src=x onerror=alert(1)>',council:'<script>evil()</script>'})");assert.ok(!html.includes('<img'));assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;img'));assert.equal(a.run("esc('\" autofocus onfocus=evil()')"),'&quot; autofocus onfocus=evil()');});
 test('Ознакомительный и пустой рабочий режимы различаются',()=>{const a=app();a.run('state.items=demoItems;render()');assert.ok(a.nodes['#app'].innerHTML.includes('Примеры данных'));a.run("state.demo=false;state.items=[];state.user={name:'Тест',role:'admin',council:'Совет'};render()");assert.ok(a.nodes['#app'].innerHTML.includes('Начните с первой идеи'));assert.ok(!a.nodes['#app'].innerHTML.includes('Примеры данных'));assert.ok(a.nodes['#app'].innerHTML.includes('Участники и доступ'));});

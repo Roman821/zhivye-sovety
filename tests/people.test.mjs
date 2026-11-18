@@ -22,6 +22,23 @@ test('Полные права, приглашения, назначения, з�
  assert.equal((await req('/council-memberships','POST',membership,specialist.cookie)).status,200);
  assert.equal((await req('/council-memberships','POST',membership,specialist.cookie)).status,200);
  const linkedRoster=(await req('/council-data','GET',undefined,owner)).data.roster.filter(p=>p.id===person.id);assert.equal(linkedRoster.length,2);assert.ok(linkedRoster.some(p=>p.council==='Региональный Совет'&&p.membership));
+ const secretary=await req('/register','POST',{name:'Региональный секретарь',email:'secretary@example.test',password,council:'Региональный Совет'});
+ assert.equal(secretary.status,201);
+ const secretaryId=secretary.data.user.id;
+ assert.equal((await req('/members/roles','POST',{id:secretaryId,roles:['secretary']},owner)).status,200);
+ assert.deepEqual((await req('/people-data','GET',undefined,secretary.cookie)).data.meeting_people,[]);
+ assert.equal((await req('/members/permissions','POST',{id:secretaryId,permissions:['edit_roster']},owner)).status,200);
+ const secretaryData=(await req('/people-data','GET',undefined,secretary.cookie)).data;
+ assert.deepEqual(secretaryData.people.map(p=>p.user_id),[secretaryId]);
+ assert.deepEqual(secretaryData.meeting_people.find(p=>p.id===person.id),{
+  id:person.id,name:person.name,council:'Совет В',memberships:[{council:'Региональный Совет'}]
+ });
+ assert.ok(secretaryData.meeting_people.some(p=>p.id===chernogorskPerson.data.id));
+ const attendance=[{person_id:person.id,status:'present'},{person_id:chernogorskPerson.data.id,status:'present'}];
+ const regionalVks={council:'Региональный Совет',title:'ВКС секретаря',date:'2026-10-30',level:'regional',format:'vks',attendance,decisions:'Согласовали план'};
+ const secretaryMeeting=await req('/meetings','POST',regionalVks,secretary.cookie);
+ assert.equal(secretaryMeeting.status,201);
+ assert.deepEqual((await req('/people-data','GET',undefined,secretary.cookie)).data.meetings.find(m=>m.id===secretaryMeeting.data.id).attendance,attendance);
  const samePerson=(await req('/people-data','GET',undefined,owner)).data.people.filter(p=>p.id===person.id);assert.equal(samePerson.length,1);assert.equal(samePerson[0].memberships.length,2);
  assert.equal((await req('/register','POST',{name:person.name,email:'membership-duplicate@example.test',password,council:'Региональный Совет'})).status,409);
  assert.equal((await req('/council-memberships','POST',{...membership,positions:['Секретарь'],edit:true},owner)).status,200);
