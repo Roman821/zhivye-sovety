@@ -33,6 +33,7 @@ test('Обзор разделяет личные задачи и общую ра
  assert.match(personal,/Просрочено/);
  assert.match(personal,/Вы ответственный/);
  assert.match(a.run("state.items=[];overviewWork()"),/Пока нет открытых задач и проектов/);
+ assert.match(a.run("registry()"),/<section class="hero">[\s\S]*<div class="overview-work">[\s\S]*<section class="stats">/);
  assert.doesNotMatch(a.run("state.demo=true;registry()"),/id="personal-work"/);
 });
 test('Форма ВКС показывает состав и гостей из списка для посещаемости',()=>{

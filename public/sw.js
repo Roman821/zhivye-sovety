@@ -1,5 +1,5 @@
 // Service Worker платформы «Советы Первых 19»: установка как приложения, просмотр без интернета, push-уведомления.
-const SHELL='sovety-shell-v4',API='sovety-api';
+const SHELL='sovety-shell-v5',API='sovety-api';
 const shell=['/','/style.css','/app.js','/council-features.js','/exceljs.min.js','/exports.js','/people.js','/person-picker.js','/registration.js','/plan.js','/efficiency.js','/materials.js','/council-picker.js','/pwa.js','/first-logo-white.png','/favicon.png','/icon-192.png','/manifest.webmanifest'];
 // Только эти ответы сервера сохраняются для просмотра без связи. Файлы материалов и фото не кешируются.
 const cachedApi=['/api/bootstrap','/api/items','/api/people-data','/api/personal','/api/council-data','/api/materials','/api/identity-status','/api/notifications'];
