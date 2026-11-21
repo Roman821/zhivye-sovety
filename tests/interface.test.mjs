@@ -5,6 +5,36 @@ import {readFileSync} from 'node:fs';
 const source=['app.js','plan.js','efficiency.js','sovetnik.js'].map(f=>readFileSync(new URL('../public/'+f,import.meta.url),'utf8')).join('\n');
 function app(){const nodes={};const context=vm.createContext({console,setTimeout,clearTimeout,URL,Intl,Date,fetch:()=>new Promise(()=>{}),window:{scrollTo(){}},document:{querySelector:s=>nodes[s]||(nodes[s]={innerHTML:'',textContent:'',classList:{add(){},remove(){}},showModal(){},close(){}}),addEventListener(){}}});vm.runInContext(source,context);return {run:code=>vm.runInContext(code,context),nodes};}
 test('Поиск и сочетание фильтров работают независимо от вида списка',()=>{const a=app();a.run('state.items=demoItems;state.demo=true');assert.equal(a.run('filtered().length'),6);a.run("state.query='наставничества'");assert.equal(a.run('filtered()[0].title'),'Совет — Совету');a.run("state.query='';state.council='Ширинский район';state.status='progress'");assert.equal(a.run('filtered().length'),2);a.run("state.page='initiative'");assert.equal(a.run('filtered().length'),1);a.run("state.view='list';render()");assert.ok(a.nodes['#app'].innerHTML.includes('class="rows"'));});
+test('Обзор разделяет личные задачи и общую работу Советов участника',()=>{
+ const a=app();
+ a.run(`
+  state.demo=false;
+  state.user={id:'u1',name:'Анна',council:'Основной Совет',scope:null};
+  state.peopleData={people:[{id:'p1',user_id:'u1',memberships:[{council:'Второй Совет'}]}]};
+  const workItem=(id,overrides={})=>({id,title:id,kind:'task',status:'new',council:'Основной Совет',...overrides});
+  state.items=[
+   workItem('assigned',{council:'Другой Совет',assignee_ids:['p1']}),
+   workItem('addressed',{kind:'project',audience:'people',audience_ids:['p1'],deadline:'2099-01-01'}),
+   workItem('both',{assignee_ids:['p1'],deadline:'2000-01-01'}),
+   workItem('own-council'),
+   workItem('second-council',{kind:'project',council:'Второй Совет'}),
+   workItem('unrelated',{council:'Другой Совет'}),
+   workItem('private-to-other',{audience:'people',audience_ids:['p2']}),
+   workItem('completed',{status:'done'}),
+   workItem('archived',{status:'archive'}),
+   workItem('meeting',{kind:'vks'})
+  ];
+ `);
+ const html=a.run('overviewWork()');
+ const [personal,councils]=html.split('<h2 id="council-work">');
+ const tileIds=panel=>[...panel.matchAll(/data-item="([^"]+)"/g)].map(m=>m[1]);
+ assert.deepEqual(tileIds(personal),['both','addressed','assigned']);
+ assert.deepEqual(tileIds(councils),['own-council','second-council']);
+ assert.match(personal,/Просрочено/);
+ assert.match(personal,/Вы ответственный/);
+ assert.match(a.run("state.items=[];overviewWork()"),/Пока нет открытых задач и проектов/);
+ assert.doesNotMatch(a.run("state.demo=true;registry()"),/id="personal-work"/);
+});
 test('Форма ВКС показывает состав и гостей из списка для посещаемости',()=>{
  const a=app();
  a.run(readFileSync(new URL('../public/council-features.js',import.meta.url),'utf8'));
