@@ -36,6 +36,16 @@ test('Обзор разделяет личные задачи и общую ра
  assert.match(a.run("registry()"),/<section class="hero">[\s\S]*<div class="overview-work">[\s\S]*<section class="stats">/);
  assert.doesNotMatch(a.run("state.demo=true;registry()"),/id="personal-work"/);
 });
+test('Кнопка удаления Совета доступна только при полном доступе и открывает подтверждение',()=>{
+ const a=app();
+ a.run(`state.demo=false;state.user={role:'municipal_curator',manage_all:true,full_access:false};
+  state.councils=['Совет <1>'];state.peopleData={directory:[{name:'Совет <1>'}]};`);
+ assert.doesNotMatch(a.run('councils()'),/data-remove-council/);
+ assert.match(a.run("state.user={role:'specialist',full_access:true};councils()"),/data-remove-council="Совет &lt;1&gt;"/);
+ a.run("confirmCouncilRemoval(state.councils[0])");
+ assert.match(a.nodes['#modal'].innerHTML,/Удалить Совет\?/);
+ assert.match(a.nodes['#modal'].innerHTML,/name="name" value="Совет &lt;1&gt;"/);
+});
 test('Форма ВКС показывает состав и гостей из списка для посещаемости',()=>{
  const a=app();
  a.run(readFileSync(new URL('../public/council-features.js',import.meta.url),'utf8'));

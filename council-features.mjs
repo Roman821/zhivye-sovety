@@ -54,6 +54,29 @@ export function councilFeatures(h){
  }
  db.prepare('INSERT INTO council_directory VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET level=excluded.level,parent=excluded.parent').run(name,b.level,parent);json(res,{ok:true});return true;
  }
+ if(p==='/api/council-directory/remove'&&req.method==='POST'){
+  if(!fullAccess(u))fail('Удалять Советы могут только координатор и специалисты.',403);
+  const b=await body(req),name=required(b.name,'Название Совета',200);
+  transaction(()=>{
+   if(!db.prepare('SELECT 1 FROM council_directory WHERE name=?').get(name))fail('Совет не найден в справочнике.',404);
+   const dependencies=db.prepare(`
+    SELECT 'подчинённые Советы' AS label WHERE EXISTS(SELECT 1 FROM council_directory WHERE parent=:name)
+    UNION ALL SELECT 'аккаунты' WHERE EXISTS(SELECT 1 FROM users WHERE council=:name)
+    UNION ALL SELECT 'карточки участников' WHERE EXISTS(SELECT 1 FROM council_roster WHERE council=:name)
+      OR EXISTS(SELECT 1 FROM council_memberships WHERE council=:name)
+    UNION ALL SELECT 'действующие приглашения' WHERE EXISTS(SELECT 1 FROM invites WHERE council=:name AND used_by IS NULL AND expires>:now)
+    UNION ALL SELECT 'записи повестки' WHERE EXISTS(SELECT 1 FROM items WHERE council=:name)
+    UNION ALL SELECT 'отчёты' WHERE EXISTS(SELECT 1 FROM council_reports WHERE council=:name)
+    UNION ALL SELECT 'заседания и ВКС' WHERE EXISTS(SELECT 1 FROM council_meetings WHERE council=:name)
+    UNION ALL SELECT 'методические материалы' WHERE EXISTS(SELECT 1 FROM materials, json_each(materials.councils) WHERE json_each.value=:name)
+    UNION ALL SELECT 'записи раздела «Вопрос/ответ»' WHERE EXISTS(SELECT 1 FROM qa_questions WHERE council=:name)
+   `).all({name,now:Date.now()});
+   if(dependencies.length)fail('Совет нельзя удалить. С ним связаны '+dependencies.map(row=>row.label).join(', ')+'.',409);
+   db.prepare('DELETE FROM council_directory WHERE name=?').run(name);
+  });
+  json(res,{ok:true});
+  return true;
+ }
  if(p==='/api/council-roster'&&req.method==='POST'){
  const b=await body(req),council=required(b.council,'Совет',200);if(!canEdit(u,{council}))fail('Можно вести только состав своего Совета.',403);
  if(!db.prepare('SELECT name FROM council_directory WHERE name=?').get(council))fail('Сначала добавьте Совет и его уровень.');

@@ -52,5 +52,25 @@ test('Доступ по уровням Советов, район куратор
  assert.equal((await req('/items/'+fresh.id,'PUT',{...fresh,title:'Правка по праву',version:fresh.version},localChair.cookie)).status,200);
  assert.equal((await req('/items','POST',item('Абаканский район'),localChair.cookie)).status,403);
  assert.equal((await req('/members/permissions','POST',{id:curator.data.user.id,permissions:['edit_plan']},curator.cookie)).status,400);
+ const specialist=await member('Специалист',['specialist'],'Региональный Совет',6);
+ const remove=(name,cookie)=>req('/council-directory/remove','POST',{name},cookie);
+ assert.equal((await dir('Пустой первичный Совет','primary','Ширинский район')).status,200);
+ assert.equal((await remove('Пустой первичный Совет',curator.cookie)).status,403);
+ assert.equal((await remove('Пустой первичный Совет',localChair.cookie)).status,403);
+ assert.equal((await remove('Пустой первичный Совет',specialist.cookie)).status,200);
+ assert.equal((await remove('Пустой первичный Совет',owner)).status,404);
+ assert.ok(!(await req('/registration-options')).data.councils.some(c=>c.name==='Пустой первичный Совет'));
+ assert.ok(!(await req('/items','GET',undefined,owner)).data.councils.includes('Пустой первичный Совет'));
+ assert.equal((await dir('Пустой местный Совет','local')).status,200);
+ assert.equal((await remove('Пустой местный Совет',owner)).status,200);
+ const parent=await remove('Ширинский район',owner);
+ assert.equal(parent.status,409);
+ assert.match(parent.data.error,/подчинённые Советы/);
+ assert.match(parent.data.error,/аккаунты/);
+ assert.match(parent.data.error,/записи повестки/);
+ const invitedCouncil=await remove('Школа №2 Шира',specialist.cookie);
+ assert.equal(invitedCouncil.status,409);
+ assert.match(invitedCouncil.data.error,/действующие приглашения/);
+ assert.ok((await req('/registration-options')).data.councils.some(c=>c.name==='Ширинский район'));
  }finally{if(child?.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}rmSync(data,{recursive:true,force:true});}
 });
