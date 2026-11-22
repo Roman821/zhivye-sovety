@@ -111,15 +111,33 @@ function councils(){
    <div class="council-actions"><button type="button" class="text-button" data-council="${esc(name)}">Посмотреть повестку ${icon('arrow')}</button>${remove}</div>
   </section>`;
  });
- return heading('ВМЕСТЕ СИЛЬНЕЕ','Советы Хакасии','Общая повестка и вклад каждой команды.')+
+ const trash=state.user?.full_access&&!state.demo?btn('Корзина Советов','council-trash','','list'):'';
+ return heading('ВМЕСТЕ СИЛЬНЕЕ','Советы Хакасии','Общая повестка и вклад каждой команды.',trash)+
   `<div class="council-grid">${cards.join('')||'<section class="panel">Советы появятся здесь после добавления в общий реестр.</section>'}</div>`;
 }
 function confirmCouncilRemoval(name){
- modal(`<h2>Удалить Совет?</h2><p>Совет «${esc(name)}» исчезнет из справочника и списка при регистрации.</p>
+ modal(`<h2>Удалить Совет?</h2><p>Совет «${esc(name)}» исчезнет из справочника и списка при регистрации. Его можно будет восстановить из корзины.</p>
   <form id="council-remove-form"><input type="hidden" name="name" value="${esc(name)}">
    <div class="form-error" role="alert"></div>
-   <div class="form-actions"><button type="button" class="button" data-action="close">Отмена</button><button type="submit" class="button primary">Удалить Совет</button></div>
+   <div class="form-actions"><button type="button" class="button" data-action="close">Отмена</button><button type="submit" class="button primary">Переместить в корзину</button></div>
   </form>`);
+}
+function renderCouncilTrash(councils){
+ const deletedOn=new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeZone:'Asia/Krasnoyarsk'});
+ const rows=councils.map(c=>`<li><form class="council-restore-form">
+  <input type="hidden" name="name" value="${esc(c.name)}">
+  <div class="council-restore-details"><strong>${esc(c.name)}</strong>
+   <small>${esc(councilLevels[c.level])}${c.parent?' · Вышестоящий Совет: '+esc(c.parent):''}</small>
+   <small>Удалён ${deletedOn.format(new Date(c.deleted_at))}</small>
+  </div>
+  <button type="submit" class="button" aria-label="Восстановить Совет «${esc(c.name)}»">Восстановить</button>
+  <div class="form-error" role="alert"></div>
+ </form></li>`).join('');
+ modal(`<h2>Корзина Советов</h2><div id="council-trash">${rows?`<ul class="council-trash-list">${rows}</ul>`:'<p>Корзина пуста.</p>'}</div>`);
+}
+async function openCouncilTrash(){
+ const {councils}=await api('/council-directory/trash');
+ renderCouncilTrash(councils);
 }
 function help(){return heading('ПОНЯТНЫЙ СЛЕДУЮЩИЙ ШАГ','От идеи — к результату','Одна общая площадка вместо потерянных договорённостей.')+`<div class="help-grid">${[['01','Предложите','Создайте инициативу, проект или проблему. Опишите, что хотите изменить и какого результата ждёте.'],['02','Обсудите','Советы видят общую повестку, оставляют комментарии и предлагают помощь.'],['03','Действуйте','Назначьте ответственного, срок и следующий шаг. Меняйте статус по мере работы.'],['04','Подведите итог','Зафиксируйте результат перед завершением. История обсуждения останется в карточке.']].map(r=>`<section class="help-card"><span>${r[0]}</span><h2>${r[1]}</h2><p>${r[2]}</p></section>`).join('')}</div><section class="panel help-note"><h2>Кто что может делать</h2><p><strong>Участники</strong> создают и изменяют записи своего Совета. Все участники читают общую повестку и могут комментировать записи других Советов.</p><p><strong>Координатор, специалист и муниципальный куратор</strong> работают со всеми записями, создаёт одноразовые приглашения и управляет доступом участников. Роль и Совет задаются приглашением.</p><h2>Где сохраняются данные</h2><p>${state.hosted?'В общей базе на сервере. Записи доступны зарегистрированным участникам с разных устройств.':'В базе на этом компьютере. Сейчас сайт доступен только на этом ПК. Для совместного входа с других устройств потребуется отдельное размещение сайта.'}</p>${canManage()?btn('Выгрузить записи и историю','backup','','download'):''}</section>`;}
 async function auth(mode){mode=mode||(state.setupRequired?'setup':'login');const setup=mode==='setup',reg=mode==='register';try{const choices=reg?(await api('/registration-options')).councils:[];modal(`<div class="eyebrow">СОВЕТЫ ПЕРВЫХ 19 · ХАКАСИЯ</div><h2>${setup?'Создайте рабочее пространство':reg?'Присоединиться к Совету':'С возвращением'}</h2><p class="muted">${setup?'Первая учётная запись получит роль координатора.':reg?'Можно зарегистрироваться без приглашения: выберите свой Совет. Если у вас есть код, он сохранит назначенные управляющим должности.':'Войдите в свой аккаунт.'}</p><form id="auth-form" data-mode="${mode}">${setup||reg?'<label>Фамилия, имя, отчество<input name="name" required maxlength="100" autocomplete="name" placeholder="ФИО полностью"></label>':''}${setup&&state.setupCodeRequired?'<label>Код первичной настройки<input name="setup_code" type="password" required autocomplete="off"></label>':''}${setup?'<label>Ваш Совет<input name="council" required maxlength="200" value="Региональный Совет Первых"></label>':''}${reg?`<label>Ваш Совет<select name="council"><option value="">Выберите Совет</option>${choices.map(c=>`<option value="${esc(c.name)}">${esc(c.name)} · ${esc({regional:'Региональный',local:'Местный',primary:'Первичный'}[c.level])}</option>`).join('')}</select></label><label>Код приглашения <small>необязательно</small><input name="code" maxlength="100" autocomplete="off" placeholder="Оставьте пустым для самостоятельной регистрации"></label>`:''}<label>Электронная почта<input name="email" type="email" required autocomplete="email"></label><label>Пароль<input name="password" type="password" required ${setup||reg?'minlength="10"':''} maxlength="200" autocomplete="${setup||reg?'new-password':'current-password'}"></label><div class="form-error" role="alert"></div><button class="button primary full" type="submit">${setup?'Создать пространство':reg?'Зарегистрироваться':'Войти'}${icon('arrow')}</button></form><div class="auth-links">${!setup?`<button data-action="auth-${reg?'login':'register'}">${reg?'Уже есть аккаунт? Войти':'Зарегистрироваться без кода или по приглашению'}</button>`:''}<button data-action="close">Пока посмотреть примеры</button></div>`);}catch(e){toast(e.message);}}
@@ -141,6 +159,7 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button,[da
  if(b.dataset.stat){state.query='';state.council='';state.status='';if(b.dataset.stat==='initiative')state.page='initiative';else if(b.dataset.stat==='deadline'){state.page='overview';state.status='overdue';}else state.status=b.dataset.stat;render();return;}
  if(b.dataset.access){await api('/members/access','POST',{id:b.dataset.access,active:b.dataset.active==='1'});toast('Доступ участника обновлён.');return loadMembers();}
  const a=b.dataset.action;
+ if(a==='council-trash')return await openCouncilTrash();
  if(a==='close')return closeModal();if(a==='auth')return auth();if(a?.startsWith('auth-'))return auth(a.slice(5));if(a==='create')return itemForm();if(a==='edit')return itemForm(currentItem);if(a==='invite')return invite();
  if(a==='reset'){state.query='';state.council='';state.status='';return render();}
  if(a==='logout'){await api('/logout','POST',{});if(window.caches)await caches.delete('sovety-api');state.user=null;state.demo=true;state.page='overview';await load();return;}
@@ -153,7 +172,13 @@ document.addEventListener('submit',async e=>{e.preventDefault();const f=e.target
  if(f.id==='auth-form'){const mode=f.dataset.mode;const d=await api('/'+mode,'POST',data);state.user=d.user;state.demo=false;state.setupRequired=false;state.page='overview';closeModal();await load();toast(d.profile_pending?'Вы присоединились к Совету. Привязку ранее внесённой карточки проверит управляющий.':'Добро пожаловать в команду!');}
  if(f.id==='item-form'){data.assignee_ids=new FormData(f).getAll('assignee_ids');data.audience_ids=new FormData(f).getAll('audience_ids');data.version=Number(f.dataset.version);const id=f.dataset.id;const d=await api('/items'+(id?'/'+id:''),id?'PUT':'POST',data);closeModal();await load();await detail(d.item.id);toast(id?'Изменения сохранены.':'Запись добавлена в общую повестку.');}
  if(f.id==='comment-form'){await api('/items/'+f.dataset.id+'/comments','POST',data);await detail(f.dataset.id);toast('Комментарий добавлен.');}
- if(f.id==='council-remove-form'){await api('/council-directory/remove','POST',data);closeModal();await load();toast('Совет удалён.');}
+ if(f.id==='council-remove-form'){await api('/council-directory/remove','POST',data);closeModal();await load();toast('Совет перемещён в корзину.');}
+ if(f.classList.contains('council-restore-form')){
+  await api('/council-directory/restore','POST',data);
+  const row=f.closest('li'),list=row.parentElement;
+  row.remove();if(!list.children.length)list.replaceWith(Object.assign(document.createElement('p'),{textContent:'Корзина пуста.'}));
+  await load();toast('Совет восстановлен.');
+ }
  if(f.id==='invite-form'){data.roles=new FormData(f).getAll('roles');data.allow_homonym=!!f.elements.allow_homonym?.checked;const d=await api('/invites','POST',data);state.peopleData=await api('/people-data');state.councils=[...new Set([...state.councils,d.council])];modal(`<div class="eyebrow">ПРИГЛАШЕНИЕ ГОТОВО</div><h2>Ещё один Совет на связи</h2><p>${esc(d.council)} · ${esc(displayRoles(d))}</p><label>Одноразовый код<input class="invite-code" readonly value="${d.code}" aria-label="Код приглашения"></label><p class="muted">Выделите и скопируйте код. Срок действия — 7 дней. ${state.hosted?'Сайт доступен по общей ссылке.':'Сейчас сайт доступен только на этом компьютере.'}</p>${btn('Готово','close','primary')}`);}
  }catch(err){if(error)error.textContent=err.message;else toast(err.message);}finally{submit.disabled=false;}});
 async function init(){try{const d=await api('/bootstrap');state.setupRequired=d.setupRequired;state.hosted=d.hosted;state.setupCodeRequired=d.setupCodeRequired;state.notificationsOn=!!d.notifications;state.sovetnikOn=!!d.sovetnik;state.user=d.user;state.demo=!d.user;await load();if(typeof pwaRoute==='function')pwaRoute();}catch(e){$('#app').innerHTML=`<div class="loading">Не удалось подключиться<span>${esc(e.message)} Обновите страницу после запуска сервера.</span></div>`;}}

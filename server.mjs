@@ -100,7 +100,7 @@ let notifier;const notifyHook=name=>(...a)=>{try{notifier?.[name](...a);}catch(e
 const hooks={itemSaved:notifyHook('itemSaved'),subtaskSaved:notifyHook('subtaskSaved'),reportRequested:notifyHook('reportRequested')};
 const shared={hooks,db,randomUUID,now,fail,required,str,admin,canEdit,json,body,transaction,manager,userRoles,canViewPerson,canManage,canView,allowed,fullAccess,userPermissions,homeCouncils,roleLabels:{admin:'Координатор',chair:'Председатель',deputy_chair:'Заместитель председателя',secretary:'Секретарь',press_secretary:'Пресс-секретарь',member:'Участник',municipal_curator:'Муниципальный куратор',specialist:'Специалист',local_delegate:'Делегат в местный Совет Первых',regional_delegate:'Делегат в региональный Совет Первых'}};
 const features=councilFeatures({...shared,validatePersonIds:(...a)=>people.validatePersonIds(...a),profileValues:(...a)=>people.profileValues(...a),publicPerson:r=>people.publicPerson(r)});
-const people=peopleFeatures(shared);
+const people=peopleFeatures({...shared,checkCouncilName:features.checkCouncilName});
 const plan=planFeatures({...shared,validatePersonIds:(...a)=>people.validatePersonIds(...a),personForUser:u=>people.personForUser(u)});
 const materials=materialsFeatures(shared);
 const qa=qaFeatures(shared);

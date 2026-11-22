@@ -61,8 +61,30 @@ test('Доступ по уровням Советов, район куратор
  assert.equal((await remove('Пустой первичный Совет',owner)).status,404);
  assert.ok(!(await req('/registration-options')).data.councils.some(c=>c.name==='Пустой первичный Совет'));
  assert.ok(!(await req('/items','GET',undefined,owner)).data.councils.includes('Пустой первичный Совет'));
+ const trash=cookie=>req('/council-directory/trash','GET',undefined,cookie);
+ const restore=(name,cookie)=>req('/council-directory/restore','POST',{name},cookie);
+ assert.equal((await trash(curator.cookie)).status,403);
+ assert.equal((await restore('Пустой первичный Совет',curator.cookie)).status,403);
+ const deleted=(await trash(specialist.cookie)).data.councils[0];
+ assert.equal(deleted.name,'Пустой первичный Совет');
+ assert.equal(deleted.level,'primary');
+ assert.equal(deleted.parent,'Ширинский район');
+ assert.equal((await dir(deleted.name,'primary','Ширинский район')).status,409);
+ assert.equal((await req('/invites','POST',{roles:['member'],council:deleted.name},owner)).status,409);
+ assert.equal((await restore(deleted.name,owner)).status,200);
+ assert.deepEqual((await trash(specialist.cookie)).data.councils,[]);
+ assert.equal((await restore(deleted.name,owner)).status,404);
+ assert.deepEqual((await req('/council-data','GET',undefined,owner)).data.directory.find(c=>c.name===deleted.name),{
+  name:deleted.name,level:'primary',parent:'Ширинский район'
+ });
+ assert.ok((await req('/registration-options')).data.councils.some(c=>c.name===deleted.name));
  assert.equal((await dir('Пустой местный Совет','local')).status,200);
+ assert.equal((await dir('Дочерний тестовый Совет','primary','Пустой местный Совет')).status,200);
+ assert.equal((await remove('Дочерний тестовый Совет',owner)).status,200);
  assert.equal((await remove('Пустой местный Совет',owner)).status,200);
+ assert.equal((await restore('Дочерний тестовый Совет',specialist.cookie)).status,409);
+ assert.equal((await restore('Пустой местный Совет',specialist.cookie)).status,200);
+ assert.equal((await restore('Дочерний тестовый Совет',specialist.cookie)).status,200);
  const parent=await remove('Ширинский район',owner);
  assert.equal(parent.status,409);
  assert.match(parent.data.error,/подчинённые Советы/);

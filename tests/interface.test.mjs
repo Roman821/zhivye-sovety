@@ -36,15 +36,23 @@ test('Обзор разделяет личные задачи и общую ра
  assert.match(a.run("registry()"),/<section class="hero">[\s\S]*<div class="overview-work">[\s\S]*<section class="stats">/);
  assert.doesNotMatch(a.run("state.demo=true;registry()"),/id="personal-work"/);
 });
-test('Кнопка удаления Совета доступна только при полном доступе и открывает подтверждение',()=>{
+test('Управляющий с полным доступом может переместить Совет в корзину и открыть восстановление',()=>{
  const a=app();
  a.run(`state.demo=false;state.user={role:'municipal_curator',manage_all:true,full_access:false};
   state.councils=['Совет <1>'];state.peopleData={directory:[{name:'Совет <1>'}]};`);
  assert.doesNotMatch(a.run('councils()'),/data-remove-council/);
+ assert.doesNotMatch(a.run('councils()'),/Корзина Советов/);
  assert.match(a.run("state.user={role:'specialist',full_access:true};councils()"),/data-remove-council="Совет &lt;1&gt;"/);
+ assert.match(a.run('councils()'),/Корзина Советов/);
  a.run("confirmCouncilRemoval(state.councils[0])");
  assert.match(a.nodes['#modal'].innerHTML,/Удалить Совет\?/);
  assert.match(a.nodes['#modal'].innerHTML,/name="name" value="Совет &lt;1&gt;"/);
+ a.run(readFileSync(new URL('../public/council-features.js',import.meta.url),'utf8'));
+ a.run("renderCouncilTrash([{name:'Совет <1>',level:'primary',parent:'Район',deleted_at:'2026-11-20T00:00:00Z'}])");
+ assert.match(a.nodes['#modal'].innerHTML,/Восстановить Совет «Совет &lt;1&gt;»/);
+ assert.match(a.nodes['#modal'].innerHTML,/Первичный · Вышестоящий Совет: Район/);
+ a.run('renderCouncilTrash([])');
+ assert.match(a.nodes['#modal'].innerHTML,/Корзина пуста/);
 });
 test('Форма ВКС показывает состав и гостей из списка для посещаемости',()=>{
  const a=app();

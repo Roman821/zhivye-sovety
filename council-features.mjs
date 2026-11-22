@@ -1,6 +1,7 @@
 export function councilFeatures(h){
  const {hooks,db,randomUUID,now,fail,required,str,admin,canEdit,json,body,transaction,manager,validatePersonIds,profileValues,publicPerson,canViewPerson,userRoles,roleLabels,canManage,canView,allowed,fullAccess,userPermissions}=h;
  db.exec(`CREATE TABLE IF NOT EXISTS council_directory(name TEXT PRIMARY KEY,level TEXT NOT NULL,parent TEXT NOT NULL DEFAULT '');
+ CREATE TABLE IF NOT EXISTS deleted_councils(name TEXT PRIMARY KEY,level TEXT NOT NULL,parent TEXT NOT NULL,deleted_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS council_roster(id TEXT PRIMARY KEY,council TEXT NOT NULL REFERENCES council_directory(name),name TEXT NOT NULL,position TEXT NOT NULL,updated TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS report_requests(id TEXT PRIMARY KEY,title TEXT NOT NULL,year INTEGER NOT NULL,deadline TEXT NOT NULL,created TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS council_reports(id TEXT PRIMARY KEY,request_id TEXT REFERENCES report_requests(id),council TEXT NOT NULL,year INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'draft',months TEXT NOT NULL DEFAULT '[]',local_practice TEXT NOT NULL DEFAULT '',primary_practice TEXT NOT NULL DEFAULT '',updated TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,UNIQUE(request_id,council));`);
@@ -31,6 +32,10 @@ export function councilFeatures(h){
 
  const year=v=>{if(!Number.isInteger(v)||v<2000||v>2100)fail('Укажите год от 2000 до 2100.');return v;};
  const getReport=(id,u)=>{const r=db.prepare('SELECT * FROM council_reports WHERE id=?').get(id);if(!r)fail('Отчёт не найден.',404);if(!canEdit(u,r))fail('Этот отчёт доступен его Совету и координатору.',403);return r;};
+ const deletedCouncils=()=>db.prepare('SELECT * FROM deleted_councils ORDER BY deleted_at DESC,name').all();
+ function checkCouncilName(name){
+  if(db.prepare('SELECT 1 FROM deleted_councils WHERE name=?').get(name))fail('Совет с таким названием в корзине. Его можно восстановить в разделе «Советы Хакасии».',409);
+ }
  const handler=async(req,res,p,u)=>{
  if(!p.startsWith('/api/council-')&&!p.startsWith('/api/report-'))return false;
  if(p==='/api/council-data'&&req.method==='GET'){
@@ -52,13 +57,20 @@ export function councilFeatures(h){
   if(known&&parent!==known.parent&&!canManage(u,parent||name))fail('Перенести Совет можно только внутри своего района.',403);
   if(parent&&!canManage(u,parent)&&!(known&&parent===known.parent))fail('Вышестоящий Совет вне вашей зоны доступа.',403);
  }
+ checkCouncilName(name);
  db.prepare('INSERT INTO council_directory VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET level=excluded.level,parent=excluded.parent').run(name,b.level,parent);json(res,{ok:true});return true;
+ }
+ if(p==='/api/council-directory/trash'&&req.method==='GET'){
+  if(!fullAccess(u))fail('Корзина Советов доступна координатору и специалистам.',403);
+  json(res,{councils:deletedCouncils()});
+  return true;
  }
  if(p==='/api/council-directory/remove'&&req.method==='POST'){
   if(!fullAccess(u))fail('Удалять Советы могут только координатор и специалисты.',403);
   const b=await body(req),name=required(b.name,'Название Совета',200);
   transaction(()=>{
-   if(!db.prepare('SELECT 1 FROM council_directory WHERE name=?').get(name))fail('Совет не найден в справочнике.',404);
+   const council=db.prepare('SELECT * FROM council_directory WHERE name=?').get(name);
+   if(!council)fail('Совет не найден в справочнике.',404);
    const dependencies=db.prepare(`
     SELECT 'подчинённые Советы' AS label WHERE EXISTS(SELECT 1 FROM council_directory WHERE parent=:name)
     UNION ALL SELECT 'аккаунты' WHERE EXISTS(SELECT 1 FROM users WHERE council=:name)
@@ -72,7 +84,22 @@ export function councilFeatures(h){
     UNION ALL SELECT 'записи раздела «Вопрос/ответ»' WHERE EXISTS(SELECT 1 FROM qa_questions WHERE council=:name)
    `).all({name,now:Date.now()});
    if(dependencies.length)fail('Совет нельзя удалить. С ним связаны '+dependencies.map(row=>row.label).join(', ')+'.',409);
+   db.prepare('INSERT INTO deleted_councils(name,level,parent,deleted_at) VALUES(?,?,?,?)').run(council.name,council.level,council.parent,now());
    db.prepare('DELETE FROM council_directory WHERE name=?').run(name);
+  });
+  json(res,{ok:true});
+  return true;
+ }
+ if(p==='/api/council-directory/restore'&&req.method==='POST'){
+  if(!fullAccess(u))fail('Восстанавливать Советы могут только координатор и специалисты.',403);
+  const b=await body(req),name=required(b.name,'Название Совета',200);
+  transaction(()=>{
+   const council=db.prepare('SELECT * FROM deleted_councils WHERE name=?').get(name);
+   if(!council)fail('Совет не найден в корзине.',404);
+   if(db.prepare('SELECT 1 FROM council_directory WHERE name=?').get(name))fail('В справочнике уже есть Совет с таким названием.',409);
+   if(council.parent&&!db.prepare('SELECT 1 FROM council_directory WHERE name=?').get(council.parent))fail(`Сначала восстановите вышестоящий Совет «${council.parent}».`,409);
+   db.prepare('INSERT INTO council_directory(name,level,parent) VALUES(?,?,?)').run(council.name,council.level,council.parent);
+   db.prepare('DELETE FROM deleted_councils WHERE name=?').run(name);
   });
   json(res,{ok:true});
   return true;
@@ -117,6 +144,7 @@ export function councilFeatures(h){
  }
  fail('Такого действия нет.',404);
  };
- handler.backup=()=>({directory:db.prepare('SELECT * FROM council_directory').all(),roster:db.prepare('SELECT * FROM council_roster').all().map(r=>({...r,positions:JSON.parse(r.positions)})),reportRequests:db.prepare('SELECT * FROM report_requests').all(),reports:db.prepare('SELECT * FROM council_reports').all().map(report)});
+ handler.checkCouncilName=checkCouncilName;
+ handler.backup=()=>({directory:db.prepare('SELECT * FROM council_directory').all(),deletedCouncils:deletedCouncils(),roster:db.prepare('SELECT * FROM council_roster').all().map(r=>({...r,positions:JSON.parse(r.positions)})),reportRequests:db.prepare('SELECT * FROM report_requests').all(),reports:db.prepare('SELECT * FROM council_reports').all().map(report)});
  return handler;
 }
