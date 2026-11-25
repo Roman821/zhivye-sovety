@@ -16,6 +16,15 @@ test('Конструктор содержит семь документов и �
  for(const type of a.run('Object.keys(docTemplates)')){a.run(`docType=${JSON.stringify(type)};docData=docDefaults(docType)`);assert.ok(a.run('docModel(docType,docData).length')>0);assert.ok(a.run('documentsPage()').includes('doc-paper'));}
 });
 
+test('Конструктор открывает общую форму объективки внутри платформы',()=>{
+ const a=app();
+ assert.match(a.run('documentsPage()'),/data-doc-type="objektivka"/);
+ const html=a.run("docType='objektivka';documentsPage()");
+ assert.match(html,/<iframe[^>]*src="\/forma\/objektivka\/vstroennaya"/);
+ assert.match(html,/title="Объективка участника"/);
+ assert.doesNotMatch(html,/data-action="doc-download"/);
+});
+
 test('Кворум требует более половины, а суммы открытого голосования сверяются',()=>{
  const a=app();a.run(`docData={...docDefaults('general'),number:'1',organization:'Школа',location:'Шира',total:10,present:6,attendees:'Иванов Иван Иванович',speakerChair:'Петров Пётр Петрович',meetingChair:'Сидоров Сидор Сидорович',speakerSecretary:'Петров Пётр Петрович',meetingSecretary:'Иванова Анна Сергеевна',speakerCouncil:'Петров Пётр Петрович',councilMembers:'Иванов И. И.'};for(const p of ['chair','secretary','council'])Object.assign(docData,{[p+'For']:6,[p+'Against']:0,[p+'Abstain']:0});`);
  assert.deepEqual(Array.from(a.run('docChecks("general",docData).errors')),[]);assert.ok(a.run('docModel("general",docData).map(b=>b.text||"").join(" ")').includes('Кворум имеется'));

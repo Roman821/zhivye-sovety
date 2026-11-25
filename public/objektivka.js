@@ -62,6 +62,7 @@ async function buildDocx(data) {
 }
 
 const $=id=>document.getElementById(id);
+if(location.pathname==='/forma/objektivka/vstroennaya')document.body.classList.add('embedded');
 const keys=['name','school','date','interests','place','activity','awards','story'];
 let photo='',ticket=0;
 const camera='<svg aria-hidden="true" width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="3.5"/></svg>';

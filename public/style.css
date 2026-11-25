@@ -22,6 +22,8 @@
 @media(max-width:850px){.overview-work{grid-template-columns:1fr;gap:16px}}
 .council-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px}
 .council-actions .council-remove{color:#b12d27}
+@media(min-width:951px){.doc-layout.doc-layout-objektivka{grid-template-columns:180px minmax(0,1fr)}}
+.doc-layout-objektivka iframe{display:block;width:100%;height:860px;border:0}
 .council-trash-list{list-style:none;margin:18px 0 0;padding:0}
 .council-restore-form{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:14px 0;border-top:1px solid #e3e7ec}
 .council-restore-details{display:grid;flex:1 1 220px;overflow-wrap:anywhere}

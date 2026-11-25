@@ -10,6 +10,14 @@ test('Внешний режим защищает первичную настро
  try{
  const url=await new Promise((resolve,reject)=>{let output='';child.stdout.on('data',c=>{output+=c;const m=output.match(/http:\/\/127.0.0.1:\d+/);if(m)resolve(m[0]);});child.on('error',reject);child.on('exit',n=>reject(new Error('Server exit '+n)));});
  const bootstrap=await (await fetch(url+'/api/bootstrap')).json();assert.equal(bootstrap.hosted,true);assert.equal(bootstrap.setupCodeRequired,true);assert.ok(!JSON.stringify(bootstrap).includes(code));
+ const standalone=await fetch(url+'/forma/objektivka');
+ assert.equal(standalone.status,200);
+ assert.equal(standalone.headers.get('x-frame-options'),'DENY');
+ const embedded=await fetch(url+'/forma/objektivka/vstroennaya');
+ assert.equal(embedded.status,200);
+ assert.equal(embedded.headers.get('x-frame-options'),'SAMEORIGIN');
+ assert.ok(embedded.headers.get('content-security-policy').includes("frame-ancestors 'self'"));
+ assert.equal(await embedded.text(),await standalone.text());
  const credentials={name:'Тест',email:'owner@example.test',password:'long-test-password',council:'Совет'};
  const post=(body,origin='https://sovety.example')=>fetch(url+'/api/setup',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify(body)});
  assert.equal((await post(credentials)).status,403);

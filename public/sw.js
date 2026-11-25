@@ -1,6 +1,6 @@
 // Service Worker платформы «Советы Первых 19»: установка как приложения, просмотр без интернета, push-уведомления.
-const SHELL='sovety-shell-v7',API='sovety-api';
-const shell=['/','/style.css','/app.js','/council-features.js','/exceljs.min.js','/exports.js','/people.js','/person-picker.js','/registration.js','/plan.js','/efficiency.js','/materials.js','/council-picker.js','/pwa.js','/first-logo-white.png','/favicon.png','/icon-192.png','/manifest.webmanifest'];
+const SHELL='sovety-shell-v8',API='sovety-api';
+const shell=['/','/style.css','/app.js','/documents.js','/docx.min.js','/forma/objektivka/vstroennaya','/objektivka.js','/council-features.js','/exceljs.min.js','/exports.js','/people.js','/person-picker.js','/registration.js','/plan.js','/efficiency.js','/materials.js','/council-picker.js','/pwa.js','/first-logo-white.png','/favicon.png','/icon-192.png','/manifest.webmanifest'];
 // Только эти ответы сервера сохраняются для просмотра без связи. Файлы материалов и фото не кешируются.
 const cachedApi=['/api/bootstrap','/api/items','/api/people-data','/api/personal','/api/council-data','/api/materials','/api/identity-status','/api/notifications'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(SHELL).then(c=>c.addAll(shell)).then(()=>self.skipWaiting()));});
