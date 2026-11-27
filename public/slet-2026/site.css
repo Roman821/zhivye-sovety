@@ -28,3 +28,9 @@ a{color:inherit}button,input{font:inherit}button{cursor:pointer}button:focus-vis
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 .hero::before{background:linear-gradient(90deg,#101122ef,#101122c9 33%,#13246333 75%),url(/slet-2026/hero.jpg) center/cover}
 .hero .date,.desk,.code,.step,.track{border-radius:1px}.track{border:1px solid #253256;border-left:5px solid #234dcc}.track.red{border-left-color:#d90922}.step{border-top:5px solid #234dcc}.step:nth-child(2){border-top-color:#d90922}.top{border-bottom:4px solid #234dcc}.section h2{border-left:7px solid #d90922;padding-left:13px}.code{transform:skew(-5deg)}.desk{background:#19264c;color:white}
+body{background:linear-gradient(#fffffff4,#fffffff4),url(/slet-2026/hero.jpg) center/cover fixed}
+.top{background:transparent;border:0}.hero::before{background:url(/slet-2026/hero.jpg) center/cover}
+.hero h1{transform:none;letter-spacing:-.055em}.hero .date{background:transparent;color:white;padding:0;transform:none}
+.section h2{border:0;padding:0;color:#000}.track,.track.red,.step,.step:nth-child(2){border:0;background:#ffffffc9}
+.track{border-radius:0}.code{background:transparent;color:#3366cc;transform:none}.track.red .code{background:transparent;color:#d90912}
+.desk,.foot{background:#000}.hero .frame{padding-block:52px}.top .frame{height:74px}.top img{height:49px;width:36px}
