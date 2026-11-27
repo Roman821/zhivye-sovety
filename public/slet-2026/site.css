@@ -26,3 +26,5 @@ a{color:inherit}button,input{font:inherit}button{cursor:pointer}button:focus-vis
   .hero .frame{padding-block:36px 41px}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+.hero::before{background:linear-gradient(90deg,#101122ef,#101122c9 33%,#13246333 75%),url(/slet-2026/hero.jpg) center/cover}
+.hero .date,.desk,.code,.step,.track{border-radius:1px}.track{border:1px solid #253256;border-left:5px solid #234dcc}.track.red{border-left-color:#d90922}.step{border-top:5px solid #234dcc}.step:nth-child(2){border-top-color:#d90922}.top{border-bottom:4px solid #234dcc}.section h2{border-left:7px solid #d90922;padding-left:13px}.code{transform:skew(-5deg)}.desk{background:#19264c;color:white}
